@@ -18,7 +18,7 @@ const INPUT_OPTION_CLASS: &str = "bg-gray-900 paragraph-xs pl-1 pr-2 hover:bg-gr
 pub struct SelectProps<T: 'static + Clone + PartialEq + Display> {
     #[props(default = String::default())]
     label: String,
-    #[props(default = String::from("collapse"))]
+    #[props(default = String::default())]
     label_class: String,
     #[props(default = String::default())]
     div_class: String,

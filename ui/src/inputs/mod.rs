@@ -26,6 +26,39 @@ pub struct GenericInputProps<T: 'static + Clone + PartialEq> {
 }
 
 #[component]
+pub fn TextInput(
+    GenericInputProps {
+        label,
+        label_class,
+        div_class,
+        input_class,
+        disabled,
+        on_value,
+        value,
+    }: GenericInputProps<String>,
+) -> Element {
+    rsx! {
+        LabeledInput {
+            label,
+            label_class: "{INPUT_LABEL_CLASS} {label_class}",
+            div_class: "{INPUT_DIV_CLASS} {div_class}",
+            disabled,
+            div { class: "{INPUT_CLASS} {input_class}",
+                input {
+                    class: "outline-none w-full h-full",
+                    disabled,
+                    r#type: "text",
+                    oninput: move |e| {
+                        on_value(e.parsed::<String>().unwrap());
+                    },
+                    value,
+                }
+            }
+        }
+    }
+}
+
+#[component]
 pub fn Checkbox(
     GenericInputProps {
         label,

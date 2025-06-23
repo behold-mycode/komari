@@ -5,7 +5,7 @@
 use std::{env::current_exe, io::stdout, string::ToString, sync::LazyLock};
 
 use actions::Actions;
-use backend::{Configuration, Minimap as MinimapData};
+use backend::{Configuration, Minimap as MinimapData, Settings as SettingsData};
 use characters::Characters;
 use dioxus::{
     desktop::{
@@ -19,6 +19,7 @@ use fern::Dispatch;
 use log::LevelFilter;
 use minimap::Minimap;
 use rand::distr::{Alphanumeric, SampleString};
+use settings::Settings;
 
 mod actions;
 mod button;
@@ -27,6 +28,7 @@ mod icons;
 mod inputs;
 mod minimap;
 mod select;
+mod settings;
 
 const TAILWIND_CSS: Asset = asset!("public/tailwind.css");
 const AUTO_NUMERIC_JS: Asset = asset!("assets/autoNumeric.min.js");
@@ -74,6 +76,7 @@ pub struct AppState {
     minimap: Signal<Option<MinimapData>>,
     minimap_preset: Signal<Option<String>>,
     config: Signal<Option<Configuration>>,
+    settings: Signal<Option<SettingsData>>,
 }
 
 #[component]
@@ -96,6 +99,7 @@ fn App() -> Element {
         minimap: Signal::new(None),
         minimap_preset: Signal::new(None),
         config: Signal::new(None),
+        settings: Signal::new(None),
     });
 
     // Thanks dioxus
@@ -136,7 +140,9 @@ fn App() -> Element {
                         TAB_CHARACTERS => rsx! {
                             Characters {}
                         },
-                        TAB_SETTINGS => rsx! {},
+                        TAB_SETTINGS => rsx! {
+                            Settings {}
+                        },
                         _ => unreachable!(),
                     }
                 }
