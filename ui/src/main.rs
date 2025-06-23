@@ -21,6 +21,7 @@ use minimap::Minimap;
 use rand::distr::{Alphanumeric, SampleString};
 
 mod actions;
+mod button;
 mod characters;
 mod icons;
 mod inputs;

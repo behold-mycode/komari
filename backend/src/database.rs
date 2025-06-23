@@ -664,6 +664,28 @@ pub enum Action {
     Key(ActionKey),
 }
 
+impl Action {
+    pub fn condition(&self) -> ActionCondition {
+        match self {
+            Action::Move(action) => action.condition,
+            Action::Key(action) => action.condition,
+        }
+    }
+
+    pub fn with_condition(&self, condition: ActionCondition) -> Action {
+        match self {
+            Action::Move(action) => Action::Move(ActionMove {
+                condition,
+                ..*action
+            }),
+            Action::Key(action) => Action::Key(ActionKey {
+                condition,
+                ..*action
+            }),
+        }
+    }
+}
+
 #[derive(
     Clone, Copy, Default, PartialEq, Debug, Serialize, Deserialize, EnumIter, Display, EnumString,
 )]

@@ -4,10 +4,10 @@ use dioxus::{document::EvalError, prelude::*};
 use num_traits::PrimInt;
 use rand::distr::{Alphanumeric, SampleString};
 
-use super::GenericInputProps;
+use super::{GenericInputProps, INPUT_CLASS, INPUT_DIV_CLASS, INPUT_LABEL_CLASS};
 use crate::inputs::LabeledInput;
 
-pub fn use_auto_numeric(
+fn use_auto_numeric(
     id: Memo<String>,
     value: String,
     on_value: Option<EventHandler<String>>,
@@ -117,10 +117,14 @@ pub fn PercentageInput(
     rsx! {
         LabeledInput {
             label,
-            label_class,
-            div_class,
+            label_class: "{INPUT_LABEL_CLASS} {label_class}",
+            div_class: "{INPUT_DIV_CLASS} {div_class}",
             disabled,
-            input { id: input_id(), disabled, class: input_class }
+            input {
+                id: input_id(),
+                disabled,
+                class: "{INPUT_CLASS} {input_class}",
+            }
         }
     }
 }
@@ -180,13 +184,13 @@ pub fn NumberInputI32(
 #[component]
 fn PrimIntInput<T: 'static + IntoAttributeValue + PrimInt + FromStr + Display>(
     label: String,
-    #[props(default = String::default())] label_class: String,
-    #[props(default = String::default())] div_class: String,
-    #[props(default = String::default())] input_class: String,
+    label_class: String,
+    div_class: String,
+    input_class: String,
     #[props(default = None)] maximum_value: Option<T>,
     #[props(default = T::min_value())] minimum_value: T,
     #[props(default = String::default())] suffix: String,
-    #[props(default = false)] disabled: bool,
+    disabled: bool,
     on_value: EventHandler<T>,
     value: T,
 ) -> Element {
@@ -207,10 +211,14 @@ fn PrimIntInput<T: 'static + IntoAttributeValue + PrimInt + FromStr + Display>(
     rsx! {
         LabeledInput {
             label,
-            label_class,
-            div_class,
+            label_class: "{INPUT_LABEL_CLASS} {label_class}",
+            div_class: "{INPUT_DIV_CLASS} {div_class}",
             disabled,
-            input { id: input_id(), disabled, class: input_class }
+            input {
+                id: input_id(),
+                disabled,
+                class: "{INPUT_CLASS} {input_class}",
+            }
         }
     }
 }

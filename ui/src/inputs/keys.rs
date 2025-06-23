@@ -1,6 +1,7 @@
 use backend::KeyBinding;
 use dioxus::{events::Key, prelude::*};
 
+use super::{INPUT_DIV_CLASS, INPUT_LABEL_CLASS};
 use crate::{icons::XIcon, inputs::LabeledInput};
 
 // TODO: Please https://github.com/DioxusLabs/dioxus/issues/3938
@@ -20,8 +21,8 @@ pub fn KeyBindingInput(
     rsx! {
         LabeledInput {
             label,
-            label_class,
-            div_class,
+            label_class: "{INPUT_LABEL_CLASS} {label_class}",
+            div_class: "{INPUT_DIV_CLASS} {div_class}",
             disabled,
             KeyInput {
                 class: input_class,
@@ -81,7 +82,7 @@ pub fn KeyInput(
                 onmounted: move |e| {
                     input_element.set(Some(e.data()));
                 },
-                class: "absolute inset-0 outline-none w-full h-full text-center text-xs text-gray-400",
+                class: "absolute inset-0 outline-none w-full h-full text-center text-xs text-gray-400 disabled:cursor-not-allowed disabled:text-gray-600",
                 readonly: true,
                 onfocus: move |_| {
                     on_active(true);

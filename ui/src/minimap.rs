@@ -2,15 +2,19 @@ use std::sync::Arc;
 
 use backend::{
     Action, ActionKey, ActionMove, GameState, Minimap as MinimapData, RotationMode, create_minimap,
-    delete_map, game_state, minimap_frame, minimap_platforms_bound, query_maps, redetect_minimap,
-    rotate_actions, rotate_actions_halting, update_minimap, upsert_map,
+    delete_map, game_state_receiver, query_maps, redetect_minimap, rotate_actions, update_minimap,
+    upsert_map,
 };
 use dioxus::{document::EvalError, prelude::*};
 use futures_util::StreamExt;
 use serde::Serialize;
 use tokio::task::spawn_blocking;
 
-use crate::{AppState, select::TextSelect};
+use crate::{
+    AppState,
+    button::{Button, ButtonKind},
+    select::TextSelect,
+};
 
 const MINIMAP_JS: &str = r#"
     const canvas = document.getElementById("canvas-minimap");
@@ -130,6 +134,18 @@ struct ActionView {
     condition: String,
 }
 
+#[derive(PartialEq, Clone, Debug)]
+struct MinimapState {
+    position: Option<(i32, i32)>,
+    health: Option<(u32, u32)>,
+    state: String,
+    normal_action: Option<String>,
+    priority_action: Option<String>,
+    erda_shower_state: String,
+    halting: bool,
+    detected_size: Option<(usize, usize)>,
+}
+
 #[derive(Debug)]
 enum MinimapUpdate {
     Set,
@@ -165,8 +181,7 @@ pub fn Minimap() -> Element {
     });
 
     // Game state for displaying info
-    let state = use_signal::<Option<GameState>>(|| None);
-    let detected_minimap_size = use_signal::<Option<(usize, usize)>>(|| None);
+    let state = use_signal::<Option<MinimapState>>(|| None);
     // Handles async operations for minimap-related
     let coroutine = use_coroutine(move |mut rx: UnboundedReceiver<MinimapUpdate>| async move {
         while let Some(message) = rx.next().await {
@@ -176,7 +191,7 @@ pub fn Minimap() -> Element {
                 }
                 MinimapUpdate::Create(name) => {
                     let Some(mut new_minimap) = create_minimap(name).await else {
-                        return;
+                        continue;
                     };
                     let mut save_minimap = new_minimap.clone();
                     let save_id = spawn_blocking(move || {
@@ -219,9 +234,9 @@ pub fn Minimap() -> Element {
 
     rsx! {
         div { class: "flex flex-col min-w-xs max-w-xs",
-            Canvas { state, detected_minimap_size }
-            Buttons {}
-            Info { state, detected_minimap_size, minimap }
+            Canvas { state }
+            Buttons { state }
+            Info { state, minimap }
             div { class: "flex-grow flex items-end px-2",
                 div { class: "h-10 w-full flex items-center",
                     TextSelect {
@@ -236,11 +251,7 @@ pub fn Minimap() -> Element {
                         on_delete: move |_| {
                             coroutine.send(MinimapUpdate::Delete);
                         },
-                        on_select: move |(index, _)| {
-                            let selected = minimaps.peek().as_ref().unwrap().get(index).cloned().unwrap();
-                            minimap.set(Some(selected));
-                            coroutine.send(MinimapUpdate::Set);
-                        },
+                        on_select: move |(index, _)| {},
                         selected: minimap_index(),
                     }
                 }
@@ -250,31 +261,33 @@ pub fn Minimap() -> Element {
 }
 
 #[component]
-fn Canvas(
-    state: Signal<Option<GameState>>,
-    detected_minimap_size: Signal<Option<(usize, usize)>>,
-) -> Element {
+fn Canvas(state: Signal<Option<MinimapState>>) -> Element {
     // Draw minimap and update game state
     use_effect(move || {
         spawn(async move {
             let mut canvas = document::eval(MINIMAP_JS);
+            let mut receiver = game_state_receiver().await;
             loop {
-                let current_state = game_state().await;
-                let destinations = current_state.destinations.clone();
-                state.set(Some(current_state));
-
-                let minimap_frame = minimap_frame().await;
-                let Ok((frame, width, height)) = minimap_frame else {
-                    if detected_minimap_size.peek().is_some() {
-                        detected_minimap_size.set(None);
-                    }
+                let Ok(current_state) = receiver.recv().await else {
                     continue;
                 };
+                let destinations = current_state.destinations;
+                let frame = current_state.frame;
+                let current_state = MinimapState {
+                    position: current_state.position,
+                    health: current_state.health,
+                    state: current_state.state,
+                    normal_action: current_state.normal_action,
+                    priority_action: current_state.priority_action,
+                    erda_shower_state: current_state.erda_shower_state,
+                    halting: current_state.halting,
+                    detected_size: frame.as_ref().map(|(_, width, height)| (*width, *height)),
+                };
+                state.set(Some(current_state));
 
-                if detected_minimap_size.peek().is_none() {
-                    detected_minimap_size.set(Some((width, height)));
-                }
-
+                let Some((frame, width, height)) = frame else {
+                    continue;
+                };
                 let Err(error) = canvas.send((frame, width, height, destinations)) else {
                     continue;
                 };
@@ -295,9 +308,8 @@ fn Canvas(
 
 #[component]
 fn Info(
-    state: ReadOnlySignal<Option<GameState>>,
-    detected_minimap_size: ReadOnlySignal<Option<(usize, usize)>>,
-    minimap: ReadOnlySignal<Option<MinimapData>>
+    state: ReadOnlySignal<Option<MinimapState>>,
+    minimap: ReadOnlySignal<Option<MinimapData>>,
 ) -> Element {
     #[derive(Debug, PartialEq, Clone)]
     struct GameStateInfo {
@@ -327,10 +339,6 @@ fn Info(
             info.selected_minimap_size = format!("{}px x {}px", minimap.width, minimap.height);
         }
 
-        if let Some((width, height)) = detected_minimap_size() {
-            info.detected_minimap_size = format!("{width}px x {height}px")
-        }
-
         if let Some(state) = state() {
             info.state = state.state;
             info.erda_shower_state = state.erda_shower_state;
@@ -345,6 +353,9 @@ fn Info(
             }
             if let Some(action) = state.priority_action {
                 info.priority_action = action;
+            }
+            if let Some((width, height)) = state.detected_size {
+                info.detected_minimap_size = format!("{width}px x {height}px")
             }
         }
 
@@ -373,47 +384,27 @@ fn InfoItem(name: String, value: String) -> Element {
 }
 
 #[component]
-fn Buttons() -> Element {
-    let mut halting = use_signal(|| false);
-
-    use_future(move || async move {
-        loop {
-            let current_halting = *halting.peek();
-            let new_halting = rotate_actions_halting().await;
-            if current_halting != new_halting {
-                halting.toggle();
-            }
-        }
-    });
+fn Buttons(state: ReadOnlySignal<Option<MinimapState>>) -> Element {
+    let halting = use_memo(move || state().map(|state| state.halting).unwrap_or_default());
 
     rsx! {
         div { class: "flex h-10 justify-center items-center gap-4",
             Button {
+                class: "w-20 h-6",
                 text: if halting() { "Start" } else { "Stop" },
+                kind: ButtonKind::Primary,
                 on_click: move || async move {
                     rotate_actions(!*halting.peek()).await;
                 },
             }
             Button {
+                class: "w-20 h-6",
                 text: "Re-detect",
+                kind: ButtonKind::Primary,
                 on_click: move |_| async move {
                     redetect_minimap().await;
                 },
             }
-        }
-    }
-}
-
-#[component]
-fn Button(text: String, on_click: EventHandler) -> Element {
-    rsx! {
-        button {
-            class: "px-2 w-20 h-6 paragraph-xs button-primary",
-            onclick: move |e| {
-                e.stop_propagation();
-                on_click(());
-            },
-            {text}
         }
     }
 }

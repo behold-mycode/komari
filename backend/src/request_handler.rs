@@ -28,7 +28,7 @@ use crate::detect::{ArrowsCalibrating, ArrowsState, CachedDetector, Detector};
 #[cfg(debug_assertions)]
 use crate::mat::OwnedMat;
 use crate::{
-    Action, ActionCondition, ActionKey, Bound, CaptureMode, Configuration, GameState, KeyBinding,
+    Action, ActionCondition, ActionKey, CaptureMode, Configuration, GameState, KeyBinding,
     KeyBindingConfiguration, Minimap as MinimapData, PotionMode, RequestHandler, Settings,
     bridge::{ImageCapture, ImageCaptureKind, KeySenderMethod},
     buff::{BuffKind, BuffState},
@@ -40,6 +40,9 @@ use crate::{
     rotator::{Rotator, RotatorBuildArgs},
     skill::SkillKind,
 };
+
+static GAME_STATE: LazyLock<broadcast::Sender<GameState>> =
+    LazyLock::new(|| broadcast::channel(1).0);
 
 pub struct DefaultRequestHandler<'a> {
     pub context: &'a mut Context,
@@ -65,6 +68,34 @@ pub struct DefaultRequestHandler<'a> {
 impl DefaultRequestHandler<'_> {
     pub fn poll_request(&mut self) {
         poll_request(self);
+
+        let game_state = GameState {
+            position: self.player.last_known_pos.map(|pos| (pos.x, pos.y)),
+            health: self.player.health,
+            state: self.context.player.to_string(),
+            normal_action: self.player.normal_action_name(),
+            priority_action: self.player.priority_action_name(),
+            erda_shower_state: self.context.skills[SkillKind::ErdaShower].to_string(),
+            destinations: self
+                .player
+                .last_destinations
+                .clone()
+                .map(|points| {
+                    points
+                        .into_iter()
+                        .map(|point| (point.x, point.y))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default(),
+            halting: self.context.halting,
+            frame: self
+                .context
+                .detector
+                .as_ref()
+                .map(|detector| detector.mat())
+                .and_then(|mat| extract_minimap(self.context, mat)),
+        };
+        let _ = GAME_STATE.send(game_state);
     }
 
     pub fn poll_key(&mut self) {
@@ -156,10 +187,6 @@ impl RequestHandler for DefaultRequestHandler<'_> {
                 self.player.clear_actions_aborted();
             }
         }
-    }
-
-    fn on_rotate_actions_halting(&self) -> bool {
-        self.context.halting
     }
 
     fn on_create_minimap(&self, name: String) -> Option<MinimapData> {
@@ -269,43 +296,8 @@ impl RequestHandler for DefaultRequestHandler<'_> {
     }
 
     #[inline]
-    fn on_game_state(&self) -> GameState {
-        GameState {
-            position: self.player.last_known_pos.map(|pos| (pos.x, pos.y)),
-            health: self.player.health,
-            state: self.context.player.to_string(),
-            normal_action: self.player.normal_action_name(),
-            priority_action: self.player.priority_action_name(),
-            erda_shower_state: self.context.skills[SkillKind::ErdaShower].to_string(),
-            destinations: self
-                .player
-                .last_destinations
-                .clone()
-                .map(|points| {
-                    points
-                        .into_iter()
-                        .map(|point| (point.x, point.y))
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default(),
-        }
-    }
-
-    #[inline]
-    fn on_minimap_frame(&self) -> Option<(Vec<u8>, usize, usize)> {
-        self.context
-            .detector
-            .as_ref()
-            .map(|detector| detector.mat())
-            .and_then(|mat| extract_minimap(self.context, mat))
-    }
-
-    fn on_minimap_platforms_bound(&self) -> Option<Bound> {
-        if let Minimap::Idle(idle) = self.context.minimap {
-            idle.platforms_bound.map(|bound| bound.into())
-        } else {
-            None
-        }
+    fn on_game_state_receiver(&self) -> broadcast::Receiver<GameState> {
+        GAME_STATE.subscribe()
     }
 
     #[inline]

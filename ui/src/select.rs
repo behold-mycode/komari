@@ -3,7 +3,16 @@ use std::{fmt::Display, mem::discriminant};
 use backend::IntoEnumIterator;
 use dioxus::prelude::*;
 
-use crate::inputs::LabeledInput;
+use crate::{
+    button::{Button, ButtonKind},
+    inputs::LabeledInput,
+};
+
+// Pre-styled
+const INPUT_LABEL_CLASS: &str = "label";
+const INPUT_DIV_CLASS: &str = "flex flex-col gap-1";
+const INPUT_SELECT_CLASS: &str = "items-center picker:scroll-bar paragraph-xs outline-none px-1 border border-gray-600 disabled:text-gray-600 disabled:cursor-not-allowed";
+const INPUT_OPTION_CLASS: &str = "bg-gray-900 paragraph-xs pl-1 pr-2 hover:bg-gray-800";
 
 #[derive(PartialEq, Props, Clone)]
 pub struct SelectProps<T: 'static + Clone + PartialEq + Display> {
@@ -29,8 +38,8 @@ pub struct SelectProps<T: 'static + Clone + PartialEq + Display> {
 // TODO: Please https://github.com/DioxusLabs/dioxus/issues/3938
 #[component]
 pub fn EnumSelect<T: 'static + Clone + PartialEq + Display + IntoEnumIterator>(
-    #[props(default = String::default())] label: String,
-    #[props(default = String::from("collapse"))] label_class: String,
+    label: String,
+    #[props(default = String::default())] label_class: String,
     #[props(default = String::default())] div_class: String,
     #[props(default = String::default())] select_class: String,
     #[props(default = String::default())] option_class: String,
@@ -83,6 +92,7 @@ pub fn TextSelect(
         creating_text.set(None);
         creating_error.set(false);
     });
+    let select_or_delete_disabled = disabled || options.is_empty();
 
     use_effect(use_reactive!(|selected| {
         if selected.is_none() {
@@ -114,7 +124,7 @@ pub fn TextSelect(
                         div_class: "relative h-full",
                         select_class: "absolute inset-0 text-ellipsis px-1 w-full h-full border border-gray-600 paragraph-xs outline-none items-center",
                         option_class: "paragraph-xs bg-gray-900 px-2 hover:bg-gray-800",
-                        disabled: disabled || options.is_empty(),
+                        disabled: select_or_delete_disabled,
                         placeholder,
                         options,
                         on_select: move |(usize, text)| {
@@ -124,9 +134,12 @@ pub fn TextSelect(
                     }
                 }
             }
-            button {
-                class: "button-primary w-20",
-                onclick: move |_| {
+            Button {
+                class: "w-20",
+                text: if creating_text().is_some() { "Save" } else { "Create" },
+                kind: ButtonKind::Primary,
+                disabled,
+                on_click: move |_| {
                     let text = creating_text.peek().clone();
                     if let Some(text) = text {
                         if text.is_empty() {
@@ -139,26 +152,19 @@ pub fn TextSelect(
                         creating_text.set(Some("".to_string()));
                     }
                 },
-                if creating_text().is_some() {
-                    "Save"
-                } else {
-                    "Create"
-                }
             }
-            button {
-                class: "button-danger w-20",
-                onclick: move |_| {
+            Button {
+                class: "w-20",
+                text: if creating_text().is_some() { "Cancel" } else { "Delete" },
+                kind: ButtonKind::Danger,
+                disabled: select_or_delete_disabled && creating_text().is_none(),
+                on_click: move |_| {
                     if creating_text.peek().is_some() {
                         reset_creating(());
                     } else if let Some(index) = selected {
                         on_delete(index);
                     }
                 },
-                if creating_text().is_some() {
-                    "Cancel"
-                } else {
-                    "Delete"
-                }
             }
         }
     }
@@ -182,14 +188,16 @@ pub fn Select<T>(
 where
     T: 'static + Clone + PartialEq + Display,
 {
+    let option_class = format!("{INPUT_OPTION_CLASS} {option_class}");
+
     rsx! {
         LabeledInput {
             label,
-            label_class,
-            div_class,
+            label_class: "{INPUT_LABEL_CLASS} {label_class}",
+            div_class: "{INPUT_DIV_CLASS} {div_class}",
             disabled,
             select {
-                class: format!("{select_class} disabled:cursor-not-allowed"),
+                class: "{INPUT_SELECT_CLASS} {select_class}",
                 disabled,
                 onchange: move |e| {
                     let i = e.value().parse::<usize>().unwrap();

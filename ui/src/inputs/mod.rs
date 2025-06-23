@@ -5,6 +5,11 @@ mod numbers;
 
 pub use {keys::*, numbers::*};
 
+// Pre-styled
+pub(crate) const INPUT_LABEL_CLASS: &str = "label";
+pub(crate) const INPUT_DIV_CLASS: &str = "flex flex-col gap-1";
+pub(crate) const INPUT_CLASS: &str = "paragraph-xs outline-none px-1 border border-gray-600 disabled:text-gray-600 disabled:cursor-not-allowed";
+
 #[derive(Clone, PartialEq, Props)]
 pub struct GenericInputProps<T: 'static + Clone + PartialEq> {
     label: String,
@@ -35,10 +40,10 @@ pub fn Checkbox(
     rsx! {
         LabeledInput {
             label,
-            label_class,
-            div_class,
+            label_class: "{INPUT_LABEL_CLASS} {label_class}",
+            div_class: "{INPUT_DIV_CLASS} {div_class}",
             disabled,
-            div { class: input_class,
+            div { class: "{INPUT_CLASS} {input_class}",
                 input {
                     class: "appearance-none w-full h-full",
                     disabled,
@@ -54,7 +59,7 @@ pub fn Checkbox(
 }
 
 #[derive(Clone, PartialEq, Props)]
-pub struct LabeledInputProps {
+pub(crate) struct LabeledInputProps {
     label: String,
     label_class: String,
     div_class: String,
@@ -63,7 +68,7 @@ pub struct LabeledInputProps {
 }
 
 #[component]
-pub fn LabeledInput(props: LabeledInputProps) -> Element {
+pub(crate) fn LabeledInput(props: LabeledInputProps) -> Element {
     let data_disabled = props.disabled.then_some(true);
 
     rsx! {

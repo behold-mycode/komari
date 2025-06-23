@@ -14,10 +14,7 @@ use crate::{
     select::{EnumSelect, TextSelect},
 };
 
-const INPUT_LABEL_CLASS: &str = "label";
-const INPUT_DIV_CLASS: &str = "flex flex-col gap-1";
-const KEY_INPUT_CLASS: &str = "h-6";
-const INPUT_CLASS: &str = "h-6 px-1 w-full paragraph-xs outline-none border border-gray-600";
+const INPUT_CLASS: &str = "h-6 w-full";
 
 #[derive(Debug)]
 enum ConfigurationUpdate {
@@ -140,7 +137,7 @@ pub fn Characters() -> Element {
             Section { name: "Fixed actions" }
             SectionOthers { config_view, save_config }
         }
-        div { class: "flex items-center w-full h-10 bg-gray-950 absolute bottom-0",
+        div { class: "flex items-center w-full h-10 bg-gray-950 absolute bottom-0 pr-2",
             TextSelect {
                 class: "h-6 flex-grow",
                 options: config_names(),
@@ -426,9 +423,7 @@ fn KeyBindingConfigurationInput(
     rsx! {
         KeyBindingInput {
             label,
-            label_class: INPUT_LABEL_CLASS,
-            div_class: INPUT_DIV_CLASS,
-            input_class: KEY_INPUT_CLASS,
+            input_class: "h-6",
             optional,
             on_value: move |new_value: Option<KeyBinding>| {
                 let new_value = new_value
@@ -449,9 +444,7 @@ fn CharactersCheckbox(label: &'static str, on_value: EventHandler<bool>, value: 
     rsx! {
         Checkbox {
             label,
-            label_class: INPUT_LABEL_CLASS,
-            div_class: INPUT_DIV_CLASS,
-            input_class: "w-6 h-6 border border-gray-600",
+            input_class: "w-6 h-6",
             on_value,
             value,
         }
@@ -467,10 +460,7 @@ fn CharactersSelect<T: 'static + Clone + PartialEq + Display + IntoEnumIterator>
     rsx! {
         EnumSelect {
             label,
-            label_class: INPUT_LABEL_CLASS,
-            div_class: INPUT_DIV_CLASS,
-            select_class: format!("{INPUT_CLASS} items-center picker:scrollbar"),
-            option_class: "bg-gray-900 paragraph-xs pl-1 pr-2 hover:bg-gray-800",
+            select_class: INPUT_CLASS,
             on_select,
             selected,
         }
@@ -486,8 +476,6 @@ fn CharactersPercentageInput(
     rsx! {
         PercentageInput {
             label,
-            label_class: INPUT_LABEL_CLASS,
-            div_class: INPUT_DIV_CLASS,
             input_class: INPUT_CLASS,
             on_value,
             value,
@@ -500,8 +488,6 @@ fn CharactersMillisInput(label: &'static str, on_value: EventHandler<u64>, value
     rsx! {
         MillisInput {
             label,
-            label_class: INPUT_LABEL_CLASS,
-            div_class: INPUT_DIV_CLASS,
             input_class: INPUT_CLASS,
             on_value,
             value,

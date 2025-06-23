@@ -189,10 +189,7 @@ impl Rotator {
         let mut i = 0;
         while i < actions.len() {
             let action = actions[i];
-            let condition = match action {
-                Action::Move(ActionMove { condition, .. })
-                | Action::Key(ActionKey { condition, .. }) => condition,
-            };
+            let condition = action.condition();
             let queue_to_front = match action {
                 Action::Move(_) => false,
                 Action::Key(ActionKey { queue_to_front, .. }) => queue_to_front.unwrap_or_default(),
