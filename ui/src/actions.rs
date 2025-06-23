@@ -459,7 +459,7 @@ fn PopupActionInput(
 
     rsx! {
         if let Some(State { action, modifying, can_create_linked_action }) = state() {
-            div { class: "px-8 py-4 w-full h-full absolute inset-0 z-1 bg-gray-950/80",
+            div { class: "p-8 w-full h-full absolute inset-0 z-1 bg-gray-950/80",
                 ActionInput {
                     modifying,
                     can_create_linked_action,
@@ -667,7 +667,19 @@ fn ActionKeyInput(
     use_effect(use_reactive!(|value| { action.set(value) }));
 
     rsx! {
-        div { class: "grid grid-cols-3 gap-3",
+        div { class: "grid grid-cols-3 gap-3 pb-10 overflow-y-auto scrollbar",
+            div { class: "col-span-3",
+                ActionsCheckbox {
+                    label: "Positioned",
+                    on_value: move |has_position: bool| {
+                        let mut action = action.write();
+                        action.position = has_position.then_some(Position::default());
+                    },
+                    value: action().position.is_some(),
+                }
+            }
+
+
             // Position
             ActionsNumberInputI32 {
                 label: "X",
@@ -688,12 +700,13 @@ fn ActionKeyInput(
                 value: action().position.map(|pos| pos.y).unwrap_or_default(),
             }
             ActionsCheckbox {
-                label: "Positioned",
-                on_value: move |has_position: bool| {
+                label: "Adjust",
+                disabled: action().position.is_none(),
+                on_value: move |adjust: bool| {
                     let mut action = action.write();
-                    action.position = has_position.then_some(Position::default());
+                    action.position.as_mut().unwrap().allow_adjusting = adjust;
                 },
-                value: action().position.is_some(),
+                value: action().position.map(|pos| pos.allow_adjusting).unwrap_or_default(),
             }
 
             // Key, count and link key
@@ -834,7 +847,7 @@ fn ActionKeyInput(
                 value: action().wait_after_use_millis_random_range,
             }
         }
-        div { class: "flex w-full gap-3 absolute bottom-2",
+        div { class: "flex w-full gap-3 absolute bottom-0 py-2 bg-gray-900",
             Button {
                 class: "flex-grow h-6 border border-gray-600",
                 text: if modifying { "Save" } else { "Add" },
@@ -1137,11 +1150,17 @@ fn ActionsMillisInput(label: &'static str, on_value: EventHandler<u64>, value: u
 }
 
 #[component]
-fn ActionsCheckbox(label: &'static str, on_value: EventHandler<bool>, value: bool) -> Element {
+fn ActionsCheckbox(
+    label: &'static str,
+    #[props(default = false)] disabled: bool,
+    on_value: EventHandler<bool>,
+    value: bool,
+) -> Element {
     rsx! {
         Checkbox {
             label,
             input_class: "w-6 h-6",
+            disabled,
             on_value,
             value,
         }

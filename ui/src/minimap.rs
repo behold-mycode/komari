@@ -187,7 +187,9 @@ pub fn Minimap() -> Element {
         while let Some(message) = rx.next().await {
             match message {
                 MinimapUpdate::Set => {
-                    update_minimap(None, minimap().expect("minimap must be already set")).await;
+                    if let Some(minimap) = minimap() {
+                        update_minimap(None, minimap).await;
+                    }
                 }
                 MinimapUpdate::Create(name) => {
                     let Some(mut new_minimap) = create_minimap(name).await else {
