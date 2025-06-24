@@ -16,8 +16,6 @@ use crate::{
     select::{EnumSelect, Select},
 };
 
-const INPUT_CLASS: &str = "h-6 w-full";
-
 #[derive(Debug)]
 enum SettingsUpdate {
     Set,
@@ -85,7 +83,7 @@ fn Section(name: &'static str, children: Element) -> Element {
 
 #[component]
 fn SectionCapture(
-    settings_view: ReadOnlySignal<SettingsData>,
+    settings_view: Memo<SettingsData>,
     save_settings: EventHandler<SettingsData>,
 ) -> Element {
     let mut selected_handle_index = use_signal(|| None);
@@ -134,7 +132,7 @@ fn SectionCapture(
                 on_click: move |_| {
                     handle_names.restart();
                 },
-                class: "h-5 mt-2",
+                class: "mt-2",
             }
         }
     }
@@ -142,11 +140,9 @@ fn SectionCapture(
 
 #[component]
 fn SectionInput(
-    settings_view: ReadOnlySignal<SettingsData>,
+    settings_view: Memo<SettingsData>,
     save_settings: EventHandler<SettingsData>,
 ) -> Element {
-    let mut rpc_server_url = use_signal(move || settings_view().input_method_rpc_server_url);
-
     rsx! {
         Section { name: "Input",
             div { class: "grid grid-cols-3 gap-3",
@@ -160,24 +156,16 @@ fn SectionInput(
                     },
                     selected: settings_view().input_method,
                 }
-                TextInput {
-                    label: "RPC server URL",
-                    input_class: "h-6",
-                    on_value: move |url| {
-                        rpc_server_url.set(url);
-                    },
-                    value: rpc_server_url(),
-                }
-                Button {
-                    text: "Update server url",
-                    kind: ButtonKind::Primary,
-                    on_click: move |_| {
+                SettingsTextInput {
+                    text_label: "RPC server URL",
+                    button_label: "Update",
+                    on_value: move |input_method_rpc_server_url| {
                         save_settings(SettingsData {
-                            input_method_rpc_server_url: rpc_server_url.peek().clone(),
+                            input_method_rpc_server_url,
                             ..settings_view.peek().clone()
                         });
                     },
-                    class: "h-6 mt-5",
+                    value: settings_view().input_method_rpc_server_url,
                 }
             }
         }
@@ -186,7 +174,7 @@ fn SectionInput(
 
 #[component]
 fn SectionFamiliars(
-    settings_view: ReadOnlySignal<SettingsData>,
+    settings_view: Memo<SettingsData>,
     save_settings: EventHandler<SettingsData>,
 ) -> Element {
     let familiars_view = use_memo(move || settings_view().familiars);
@@ -223,7 +211,6 @@ fn SectionFamiliars(
                 }
                 MillisInput {
                     label: "Swap check milliseconds",
-                    input_class: "h-6",
                     disabled: !familiars_view().enable_familiars_swapping,
                     on_value: move |swap_check_millis| {
                         save_settings(SettingsData {
@@ -284,13 +271,43 @@ fn SectionFamiliars(
 
 #[component]
 fn SectionNotifications(
-    settings_view: ReadOnlySignal<SettingsData>,
+    settings_view: Memo<SettingsData>,
     save_settings: EventHandler<SettingsData>,
 ) -> Element {
     let notifications_view = use_memo(move || settings_view().notifications);
 
     rsx! {
         Section { name: "Notifications",
+            div { class: "grid grid-cols-2 gap-3 mb-2",
+                SettingsTextInput {
+                    text_label: "Discord webhook URL",
+                    button_label: "Update",
+                    on_value: move |discord_webhook_url| {
+                        save_settings(SettingsData {
+                            notifications: Notifications {
+                                discord_webhook_url,
+                                ..notifications_view.peek().clone()
+                            },
+                            ..settings_view.peek().clone()
+                        });
+                    },
+                    value: notifications_view().discord_webhook_url,
+                }
+                SettingsTextInput {
+                    text_label: "Discord ping user ID",
+                    button_label: "Update",
+                    on_value: move |discord_user_id| {
+                        save_settings(SettingsData {
+                            notifications: Notifications {
+                                discord_user_id,
+                                ..notifications_view.peek().clone()
+                            },
+                            ..settings_view.peek().clone()
+                        });
+                    },
+                    value: notifications_view().discord_user_id,
+                }
+            }
             div { class: "grid grid-cols-3 gap-3",
                 SettingsCheckbox {
                     label: "Rune spawns",
@@ -390,7 +407,7 @@ fn SectionNotifications(
 
 #[component]
 fn SectionOthers(
-    settings_view: ReadOnlySignal<SettingsData>,
+    settings_view: Memo<SettingsData>,
     save_settings: EventHandler<SettingsData>,
 ) -> Element {
     rsx! {
@@ -463,7 +480,6 @@ fn SettingsSelect<T: 'static + Clone + PartialEq + Display>(
     rsx! {
         Select {
             label,
-            select_class: INPUT_CLASS,
             options,
             on_select,
             selected,
@@ -481,7 +497,6 @@ fn SettingsEnumSelect<T: 'static + Clone + PartialEq + Display + IntoEnumIterato
     rsx! {
         EnumSelect {
             label,
-            select_class: INPUT_CLASS,
             disabled,
             on_select,
             selected,
@@ -499,10 +514,42 @@ fn SettingsCheckbox(
     rsx! {
         Checkbox {
             label,
-            input_class: "w-6 h-6",
+            input_class: "w-6",
             disabled,
             on_value,
             value,
+        }
+    }
+}
+
+#[component]
+fn SettingsTextInput(
+    text_label: String,
+    button_label: String,
+    on_value: EventHandler<String>,
+    value: String,
+) -> Element {
+    let mut text = use_signal(String::default);
+
+    use_effect(use_reactive!(|value| text.set(value)));
+
+    rsx! {
+        TextInput {
+            label: text_label,
+            on_value: move |new_text| {
+                text.set(new_text);
+            },
+            value: text(),
+        }
+        div { class: "flex items-end",
+            Button {
+                text: button_label,
+                kind: ButtonKind::Primary,
+                on_click: move |_| {
+                    on_value(text.peek().clone());
+                },
+                class: "w-full",
+            }
         }
     }
 }

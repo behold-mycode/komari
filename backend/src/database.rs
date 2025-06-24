@@ -458,47 +458,44 @@ impl From<Rect> for Bound {
 }
 
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
+pub struct MobbingKey {
+    pub key: KeyBinding,
+    pub link_key: Option<LinkKeyBinding>,
+    #[serde(default = "key_count_default")]
+    pub count: u32,
+    pub with: ActionKeyWith,
+    pub wait_before_millis: u64,
+    pub wait_before_millis_random_range: u64,
+    pub wait_after_millis: u64,
+    pub wait_after_millis_random_range: u64,
+}
+
+impl Default for MobbingKey {
+    fn default() -> Self {
+        Self {
+            key: KeyBinding::default(),
+            link_key: None,
+            count: key_count_default(),
+            with: ActionKeyWith::default(),
+            wait_before_millis: 0,
+            wait_before_millis_random_range: 0,
+            wait_after_millis: 0,
+            wait_after_millis_random_range: 0,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Debug, Serialize, Deserialize)]
 pub struct PingPong {
     pub bound: Bound,
-    pub key: KeyBinding,
-    #[serde(default = "key_count_default")]
-    pub key_count: u32,
-    pub key_wait_before_millis: u64,
-    pub key_wait_after_millis: u64,
+    #[serde(default)]
+    pub key: MobbingKey,
 }
 
-impl Default for PingPong {
-    fn default() -> Self {
-        Self {
-            bound: Bound::default(),
-            key: KeyBinding::default(),
-            key_count: key_count_default(),
-            key_wait_before_millis: 0,
-            key_wait_after_millis: 0,
-        }
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Default, PartialEq, Debug, Serialize, Deserialize)]
 pub struct AutoMobbing {
     pub bound: Bound,
-    pub key: KeyBinding,
-    #[serde(default = "key_count_default")]
-    pub key_count: u32,
-    pub key_wait_before_millis: u64,
-    pub key_wait_after_millis: u64,
-}
-
-impl Default for AutoMobbing {
-    fn default() -> Self {
-        Self {
-            bound: Bound::default(),
-            key: KeyBinding::default(),
-            key_count: key_count_default(),
-            key_wait_before_millis: 0,
-            key_wait_after_millis: 0,
-        }
-    }
+    pub key: MobbingKey,
 }
 
 fn key_count_default() -> u32 {
@@ -518,8 +515,7 @@ pub enum RotationMode {
 
 impl_identifiable!(Configuration);
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(PartialEq, Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Minimap {
     #[serde(skip_serializing)]

@@ -14,8 +14,6 @@ use crate::{
     select::{EnumSelect, TextSelect},
 };
 
-const INPUT_CLASS: &str = "h-6 w-full";
-
 #[derive(Debug)]
 enum ConfigurationUpdate {
     Set,
@@ -59,10 +57,14 @@ pub fn Characters() -> Element {
             while let Some(message) = rx.next().await {
                 match message {
                     ConfigurationUpdate::Set => {
-                        update_configuration(config().expect("config must be already set")).await;
+                        if let Some(config) = config() {
+                            update_configuration(config).await;
+                        }
                     }
                     ConfigurationUpdate::Save => {
-                        let mut config = config().expect("config must be already set");
+                        let Some(mut config) = config() else {
+                            continue;
+                        };
                         debug_assert!(config.id.is_some(), "saving invalid config");
 
                         spawn_blocking(move || {
@@ -139,7 +141,7 @@ pub fn Characters() -> Element {
         }
         div { class: "flex items-center w-full h-10 bg-gray-950 absolute bottom-0 pr-2",
             TextSelect {
-                class: "h-6 flex-grow",
+                class: "flex-grow",
                 options: config_names(),
                 disabled: false,
                 on_create: move |name| {
@@ -423,7 +425,6 @@ fn KeyBindingConfigurationInput(
     rsx! {
         KeyBindingInput {
             label,
-            input_class: "h-6",
             optional,
             on_value: move |new_value: Option<KeyBinding>| {
                 let new_value = new_value
@@ -444,7 +445,7 @@ fn CharactersCheckbox(label: &'static str, on_value: EventHandler<bool>, value: 
     rsx! {
         Checkbox {
             label,
-            input_class: "w-6 h-6",
+            input_class: "w-6",
             on_value,
             value,
         }
@@ -458,12 +459,7 @@ fn CharactersSelect<T: 'static + Clone + PartialEq + Display + IntoEnumIterator>
     selected: T,
 ) -> Element {
     rsx! {
-        EnumSelect {
-            label,
-            select_class: INPUT_CLASS,
-            on_select,
-            selected,
-        }
+        EnumSelect { label, on_select, selected }
     }
 }
 
@@ -474,23 +470,13 @@ fn CharactersPercentageInput(
     value: f32,
 ) -> Element {
     rsx! {
-        PercentageInput {
-            label,
-            input_class: INPUT_CLASS,
-            on_value,
-            value,
-        }
+        PercentageInput { label, on_value, value }
     }
 }
 
 #[component]
 fn CharactersMillisInput(label: &'static str, on_value: EventHandler<u64>, value: u64) -> Element {
     rsx! {
-        MillisInput {
-            label,
-            input_class: INPUT_CLASS,
-            on_value,
-            value,
-        }
+        MillisInput { label, on_value, value }
     }
 }

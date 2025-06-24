@@ -527,13 +527,7 @@ impl Rotator {
         let Some(pos) = player.last_known_pos else {
             return;
         };
-        let AutoMobbing {
-            bound,
-            key,
-            key_count,
-            key_wait_before_millis,
-            key_wait_after_millis,
-        } = auto_mobbing;
+        let AutoMobbing { bound, key } = auto_mobbing;
         let bound = if player.config.auto_mob_platforms_bound {
             idle.platforms_bound.unwrap_or(bound.into())
         } else {
@@ -569,10 +563,16 @@ impl Rotator {
         player.set_normal_action(
             u32::MAX,
             PlayerAction::AutoMob(PlayerActionAutoMob {
-                key,
-                count: key_count.max(1),
-                wait_before_ticks: (key_wait_before_millis / MS_PER_TICK) as u32,
-                wait_after_ticks: (key_wait_after_millis / MS_PER_TICK) as u32,
+                key: key.key,
+                link_key: key.link_key,
+                count: key.count.max(1),
+                with: key.with,
+                wait_before_ticks: (key.wait_before_millis / MS_PER_TICK) as u32,
+                wait_before_ticks_random_range: (key.wait_before_millis_random_range / MS_PER_TICK)
+                    as u32,
+                wait_after_ticks: (key.wait_after_millis / MS_PER_TICK) as u32,
+                wait_after_ticks_random_range: (key.wait_after_millis_random_range / MS_PER_TICK)
+                    as u32,
                 position: Position {
                     x: point.x,
                     x_random_range: 0,
@@ -596,13 +596,7 @@ impl Rotator {
         let Some(pos) = player.last_known_pos else {
             return;
         };
-        let PingPong {
-            bound,
-            key,
-            key_count,
-            key_wait_before_millis,
-            key_wait_after_millis,
-        } = ping_pong;
+        let PingPong { bound, key } = ping_pong;
 
         let bbox = idle.bbox;
         let dist_left = pos.x - bbox.x;
@@ -622,10 +616,16 @@ impl Rotator {
         player.set_normal_action(
             u32::MAX - 1,
             PlayerAction::PingPong(PlayerActionPingPong {
-                key,
-                count: key_count.max(1),
-                wait_before_ticks: (key_wait_before_millis / MS_PER_TICK) as u32,
-                wait_after_ticks: (key_wait_after_millis / MS_PER_TICK) as u32,
+                key: key.key,
+                link_key: key.link_key,
+                count: key.count.max(1),
+                with: key.with,
+                wait_before_ticks: (key.wait_before_millis / MS_PER_TICK) as u32,
+                wait_before_ticks_random_range: (key.wait_before_millis_random_range / MS_PER_TICK)
+                    as u32,
+                wait_after_ticks: (key.wait_after_millis / MS_PER_TICK) as u32,
+                wait_after_ticks_random_range: (key.wait_after_millis_random_range / MS_PER_TICK)
+                    as u32,
                 bound,
                 direction,
             }),

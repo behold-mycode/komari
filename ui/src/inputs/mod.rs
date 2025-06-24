@@ -8,7 +8,7 @@ pub use {keys::*, numbers::*};
 // Pre-styled
 pub(crate) const INPUT_LABEL_CLASS: &str = "label";
 pub(crate) const INPUT_DIV_CLASS: &str = "flex flex-col gap-1";
-pub(crate) const INPUT_CLASS: &str = "paragraph-xs outline-none px-1 border border-gray-600 disabled:text-gray-600 disabled:cursor-not-allowed";
+pub(crate) const INPUT_CLASS: &str = "h-6 paragraph-xs outline-none px-1 border border-gray-600 disabled:text-gray-600 disabled:cursor-not-allowed";
 
 #[derive(Clone, PartialEq, Props)]
 pub struct GenericInputProps<T: 'static + Clone + PartialEq> {
@@ -45,7 +45,7 @@ pub fn TextInput(
             disabled,
             div { class: "{INPUT_CLASS} {input_class}",
                 input {
-                    class: "outline-none w-full h-full",
+                    class: "outline-none disabled:cursor-not-allowed w-full h-full",
                     disabled,
                     r#type: "text",
                     oninput: move |e| {

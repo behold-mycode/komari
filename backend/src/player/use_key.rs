@@ -79,19 +79,10 @@ impl UseKey {
                 wait_after_use_ticks_random_range,
                 ..
             }) => {
-                let wait_before_min =
-                    wait_before_use_ticks.saturating_sub(wait_before_use_ticks_random_range);
-                let wait_before_max =
-                    wait_before_use_ticks.saturating_add(wait_before_use_ticks_random_range + 1);
-                // TODO: Replace rand with Rng
-                let wait_before = rand::random_range(wait_before_min..wait_before_max);
-
-                let wait_after_min =
-                    wait_after_use_ticks.saturating_sub(wait_after_use_ticks_random_range);
-                let wait_after_max =
-                    wait_after_use_ticks.saturating_add(wait_after_use_ticks_random_range + 1);
-                // TODO: Replace rand with Rng
-                let wait_after = rand::random_range(wait_after_min..wait_after_max);
+                let wait_before =
+                    random_wait_ticks(wait_before_use_ticks, wait_before_use_ticks_random_range);
+                let wait_after =
+                    random_wait_ticks(wait_after_use_ticks, wait_after_use_ticks_random_range);
 
                 Self {
                     key,
@@ -105,39 +96,57 @@ impl UseKey {
                     stage: UseKeyStage::Precondition,
                 }
             }
-            PlayerAction::AutoMob(mob) => Self {
-                key: mob.key,
-                link_key: None,
-                count: mob.count,
-                current_count: 0,
-                direction: match pos {
-                    Some(pos) => match pos.x.cmp(&mob.position.x) {
-                        Ordering::Less => ActionKeyDirection::Right,
-                        Ordering::Equal => ActionKeyDirection::Any,
-                        Ordering::Greater => ActionKeyDirection::Left,
+            PlayerAction::AutoMob(mob) => {
+                let wait_before =
+                    random_wait_ticks(mob.wait_before_ticks, mob.wait_before_ticks_random_range);
+                let wait_after =
+                    random_wait_ticks(mob.wait_after_ticks, mob.wait_after_ticks_random_range);
+
+                Self {
+                    key: mob.key,
+                    link_key: mob.link_key,
+                    count: mob.count,
+                    current_count: 0,
+                    direction: match pos {
+                        Some(pos) => match pos.x.cmp(&mob.position.x) {
+                            Ordering::Less => ActionKeyDirection::Right,
+                            Ordering::Equal => ActionKeyDirection::Any,
+                            Ordering::Greater => ActionKeyDirection::Left,
+                        },
+                        None => unreachable!(),
                     },
-                    None => unreachable!(),
-                },
-                with: ActionKeyWith::Any,
-                wait_before_use_ticks: mob.wait_before_ticks,
-                wait_after_use_ticks: mob.wait_after_ticks,
-                stage: UseKeyStage::Precondition,
-            },
-            PlayerAction::PingPong(ping_pong) => Self {
-                key: ping_pong.key,
-                link_key: None,
-                count: ping_pong.count,
-                current_count: 0,
-                direction: if matches!(ping_pong.direction, PingPongDirection::Left) {
-                    ActionKeyDirection::Left
-                } else {
-                    ActionKeyDirection::Right
-                },
-                with: ActionKeyWith::Any,
-                wait_before_use_ticks: ping_pong.wait_before_ticks,
-                wait_after_use_ticks: ping_pong.wait_after_ticks,
-                stage: UseKeyStage::Precondition,
-            },
+                    with: mob.with,
+                    wait_before_use_ticks: wait_before,
+                    wait_after_use_ticks: wait_after,
+                    stage: UseKeyStage::Precondition,
+                }
+            }
+            PlayerAction::PingPong(ping_pong) => {
+                let wait_before = random_wait_ticks(
+                    ping_pong.wait_before_ticks,
+                    ping_pong.wait_before_ticks_random_range,
+                );
+                let wait_after = random_wait_ticks(
+                    ping_pong.wait_after_ticks,
+                    ping_pong.wait_after_ticks_random_range,
+                );
+
+                Self {
+                    key: ping_pong.key,
+                    link_key: ping_pong.link_key,
+                    count: ping_pong.count,
+                    current_count: 0,
+                    direction: if matches!(ping_pong.direction, PingPongDirection::Left) {
+                        ActionKeyDirection::Left
+                    } else {
+                        ActionKeyDirection::Right
+                    },
+                    with: ping_pong.with,
+                    wait_before_use_ticks: wait_before,
+                    wait_after_use_ticks: wait_after,
+                    stage: UseKeyStage::Precondition,
+                }
+            }
             PlayerAction::FamiliarsSwapping(_)
             | PlayerAction::SolveRune
             | PlayerAction::Panic(_)
@@ -446,6 +455,14 @@ fn update_link_key(
             })
         },
     )
+}
+
+#[inline]
+fn random_wait_ticks(wait_base_ticks: u32, wait_random_range: u32) -> u32 {
+    // TODO: Replace rand with Rng
+    let wait_min = wait_base_ticks.saturating_sub(wait_random_range);
+    let wait_max = wait_base_ticks.saturating_add(wait_random_range + 1);
+    rand::random_range(wait_min..wait_max)
 }
 
 #[cfg(test)]

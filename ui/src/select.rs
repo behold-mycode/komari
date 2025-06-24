@@ -106,7 +106,7 @@ pub fn TextSelect(
     }));
 
     rsx! {
-        div { class: "flex gap-3 {class}",
+        div { class: "flex gap-3 h-6 {class}",
             div { class: "flex-grow",
                 if let Some(text) = creating_text() {
                     div { class: "relative h-full",
@@ -122,7 +122,7 @@ pub fn TextSelect(
                 } else {
                     Select {
                         div_class: "relative h-full",
-                        select_class: "absolute inset-0 text-ellipsis px-1 w-full h-full border border-gray-600 paragraph-xs outline-none items-center",
+                        select_class: "absolute inset-0 whitespace-nowrap text-ellipsis px-1 w-full h-full border border-gray-600 paragraph-xs outline-none items-center",
                         option_class: "paragraph-xs bg-gray-900 px-2 hover:bg-gray-800",
                         disabled: select_or_delete_disabled,
                         placeholder,

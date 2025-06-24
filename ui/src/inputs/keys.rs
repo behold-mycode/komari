@@ -75,7 +75,7 @@ pub fn KeyInput(
     };
 
     rsx! {
-        div { class: "relative bg-gray-900 {class}",
+        div { class: "relative bg-gray-900 h-6 {class}",
             input {
                 r#type: "text",
                 disabled,

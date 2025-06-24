@@ -77,6 +77,7 @@ pub struct AppState {
     minimap_preset: Signal<Option<String>>,
     config: Signal<Option<Configuration>>,
     settings: Signal<Option<SettingsData>>,
+    position: Signal<(i32, i32)>,
 }
 
 #[component]
@@ -100,6 +101,7 @@ fn App() -> Element {
         minimap_preset: Signal::new(None),
         config: Signal::new(None),
         settings: Signal::new(None),
+        position: Signal::new((0, 0)),
     });
 
     // Thanks dioxus

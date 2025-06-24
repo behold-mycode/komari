@@ -23,7 +23,7 @@ pub fn Button(
 
     rsx! {
         button {
-            class: "{style} {class}",
+            class: "{style} h-6 {class}",
             disabled,
             onclick: move |e| {
                 e.stop_propagation();

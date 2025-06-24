@@ -1,9 +1,7 @@
-use std::sync::Arc;
-
 use backend::{
-    Action, ActionKey, ActionMove, GameState, Minimap as MinimapData, RotationMode, create_minimap,
-    delete_map, game_state_receiver, query_maps, redetect_minimap, rotate_actions, update_minimap,
-    upsert_map,
+    Action, ActionKey, ActionMove, AutoMobbing, Minimap as MinimapData, PingPong, Position,
+    RotationMode, create_minimap, delete_map, game_state_receiver, query_maps, redetect_minimap,
+    rotate_actions, update_minimap, upsert_map,
 };
 use dioxus::{document::EvalError, prelude::*};
 use futures_util::StreamExt;
@@ -26,29 +24,35 @@ const MINIMAP_JS: &str = r#"
         const [buffer, width, height, destinations] = await dioxus.recv();
         const data = new ImageData(new Uint8ClampedArray(buffer), width, height);
         const bitmap = await createImageBitmap(data);
-        canvasCtx.beginPath()
-        canvasCtx.fillStyle = "rgb(128, 255, 204)";
-        canvasCtx.strokeStyle = "rgb(128, 255, 204)";
-        canvasCtx.drawImage(bitmap, 0, 0);
+
         if (lastWidth != width || lastHeight != height) {
             lastWidth = width;
             lastHeight = height;
             canvas.width = width;
             canvas.height = height;
         }
-        // TODO: ??????????????????????????
+
+        canvasCtx.beginPath()
+        canvasCtx.setLineDash([8]);
+        canvasCtx.fillStyle = "rgb(128, 255, 204)";
+        canvasCtx.strokeStyle = "rgb(128, 255, 204)";
+        canvasCtx.drawImage(bitmap, 0, 0);
+
         let prevX = 0;
         let prevY = 0;
         for (let i = 0; i < destinations.length; i++) {
             let [x, y] = destinations[i];
             x = (x / width) * canvas.width;
             y = ((height - y) / height) * canvas.height;
+
             canvasCtx.fillRect(x - 2, y - 2, 2, 2);
+
             if (i > 0) {
                 canvasCtx.moveTo(prevX, prevY);
                 canvasCtx.lineTo(x, y);
                 canvasCtx.stroke();
             }
+
             prevX = x;
             prevY = y;
         }
@@ -57,26 +61,16 @@ const MINIMAP_JS: &str = r#"
 const MINIMAP_ACTIONS_JS: &str = r#"
     const canvas = document.getElementById("canvas-minimap-actions");
     const canvasCtx = canvas.getContext("2d");
-    const [width, height, actions, boundEnabled, bound, platforms] = await dioxus.recv();
+    const [width, height, actions, boundAndType, platforms] = await dioxus.recv();
     canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
     const anyActions = actions.filter((action) => action.condition === "Any");
     const erdaActions = actions.filter((action) => action.condition === "ErdaShowerOffCooldown");
     const millisActions = actions.filter((action) => action.condition === "EveryMillis");
 
-    canvasCtx.fillStyle = "rgb(255, 153, 128)";
-    canvasCtx.strokeStyle = "rgb(255, 153, 128)";
-    drawActions(canvas, canvasCtx, anyActions, true);
-    if (boundEnabled) {
-        const x = (bound.x / width) * canvas.width;
-        const y = (bound.y / height) * canvas.height;
-        const w = (bound.width / width) * canvas.width;
-        const h = (bound.height / height) * canvas.height;
-        canvasCtx.beginPath();
-        canvasCtx.globalAlpha = 0.6;
-        canvasCtx.fillRect(x, y, w, h);
-        canvasCtx.globalAlpha = 1.0;
-        canvasCtx.stroke();
-    }
+    drawBound(canvasCtx, boundAndType);
+
+    canvasCtx.setLineDash([]);
+    canvasCtx.strokeStyle = "rgb(255, 160, 37)";
     for (const platform of platforms) {
         const xStart = (platform.x_start / width) * canvas.width;
         const xEnd = (platform.x_end / width) * canvas.width;
@@ -87,6 +81,10 @@ const MINIMAP_ACTIONS_JS: &str = r#"
         canvasCtx.stroke();
     }
 
+    canvasCtx.fillStyle = "rgb(255, 153, 128)";
+    canvasCtx.strokeStyle = "rgb(255, 153, 128)";
+    drawActions(canvas, canvasCtx, anyActions, true);
+
     canvasCtx.fillStyle = "rgb(179, 198, 255)";
     canvasCtx.strokeStyle = "rgb(179, 198, 255)";
     drawActions(canvas, canvasCtx, erdaActions, true);
@@ -95,22 +93,79 @@ const MINIMAP_ACTIONS_JS: &str = r#"
     canvasCtx.strokeStyle = "rgb(128, 255, 204)";
     drawActions(canvas, canvasCtx, millisActions, false);
 
+    function drawBound(canvasCtx, boundAndType) {
+        if (boundAndType === null) {
+            return;
+        }
+        const [bound, boundType] = boundAndType;
+        if (bound.width === 0 || bound.height === 0) {
+            return;
+        }
+        const x = (bound.x / width) * canvas.width;
+        const y = (bound.y / height) * canvas.height;
+        const w = (bound.width / width) * canvas.width;
+        const h = (bound.height / height) * canvas.height;
+
+        canvasCtx.strokeStyle = "rgb(152, 233, 32)";
+        canvasCtx.beginPath();
+        canvasCtx.setLineDash([8]);
+        canvasCtx.strokeRect(x, y, w, h);
+
+        if (boundType === "PingPong") {
+            canvasCtx.strokeStyle = "rgb(254, 71, 57)";
+
+            canvasCtx.moveTo(0, y);
+            canvasCtx.lineTo(x - 5, y);
+
+            canvasCtx.moveTo(0, y + h);
+            canvasCtx.lineTo(x - 5, y + h);
+
+            canvasCtx.moveTo(x + w + 5, y);
+            canvasCtx.lineTo(canvas.width, y);
+
+            canvasCtx.moveTo(x + w + 5, y + h);
+            canvasCtx.lineTo(canvas.width, y + h);
+
+            canvasCtx.moveTo(x, 0);
+            canvasCtx.lineTo(x, y);
+
+            canvasCtx.moveTo(x + w, 0);
+            canvasCtx.lineTo(x + w, y);
+
+            canvasCtx.moveTo(x, y + h);
+            canvasCtx.lineTo(x, canvas.height);
+
+            canvasCtx.moveTo(x + w, y + h);
+            canvasCtx.lineTo(x + w, canvas.height);
+        }
+        canvasCtx.stroke();
+    }
+
     function drawActions(canvas, ctx, actions, hasArc) {
         const rectSize = 4;
         const rectHalf = rectSize / 2;
         let lastAction = null;
+        let i = 1;
+
+        ctx.font = '12px sans-serif';
+
         for (const action of actions) {
             const x = (action.x / width) * canvas.width;
             const y = ((height - action.y) / height) * canvas.height;
+
             ctx.fillRect(x, y, rectSize, rectSize);
-            if (!hasArc) {
-                continue;
-            }
-            if (lastAction !== null) {
+
+            let labelX = x + rectSize / 2;
+            let labelY = y + rectSize - 7;
+            ctx.fillText(i, labelX, labelY);
+
+            if (hasArc && lastAction !== null) {
                 let [fromX, fromY] = lastAction;
                 drawArc(ctx, fromX + rectHalf, fromY + rectHalf, x + rectHalf, y + rectHalf);
             }
+
             lastAction = [x, y];
+            i++;
         }
     }
     function drawArc(ctx, fromX, fromY, toX, toY) {
@@ -156,6 +211,8 @@ enum MinimapUpdate {
 #[component]
 pub fn Minimap() -> Element {
     let mut minimap = use_context::<AppState>().minimap;
+    let minimap_preset = use_context::<AppState>().minimap_preset;
+    let position = use_context::<AppState>().position;
     let mut minimaps = use_resource(|| async {
         spawn_blocking(|| query_maps().expect("failed to query maps"))
             .await
@@ -233,16 +290,34 @@ pub fn Minimap() -> Element {
             coroutine.send(MinimapUpdate::Set);
         }
     });
+    // External modification checking
+    use_effect(move || {
+        if let Some((current_minimaps, current_minimap)) = minimaps().zip(minimap()) {
+            for minimap in current_minimaps {
+                if minimap.id == current_minimap.id {
+                    if minimap != current_minimap {
+                        minimaps.restart();
+                    }
+                    break;
+                }
+            }
+        }
+    });
 
     rsx! {
         div { class: "flex flex-col min-w-xs max-w-xs",
-            Canvas { state }
+            Canvas {
+                state,
+                minimap,
+                minimap_preset,
+                position,
+            }
             Buttons { state }
             Info { state, minimap }
             div { class: "flex-grow flex items-end px-2",
                 div { class: "h-10 w-full flex items-center",
                     TextSelect {
-                        class: "h-6 w-full",
+                        class: "w-full",
                         options: minimap_names(),
                         disabled: false,
                         placeholder: "Create a map...",
@@ -253,7 +328,17 @@ pub fn Minimap() -> Element {
                         on_delete: move |_| {
                             coroutine.send(MinimapUpdate::Delete);
                         },
-                        on_select: move |(index, _)| {},
+                        on_select: move |(index, _)| {
+                            let selected = minimaps
+                                .peek()
+                                .as_ref()
+                                .expect("should already loaded")
+                                .get(index)
+                                .cloned()
+                                .unwrap();
+                            minimap.set(Some(selected));
+                            coroutine.send(MinimapUpdate::Set);
+                        },
                         selected: minimap_index(),
                     }
                 }
@@ -263,7 +348,60 @@ pub fn Minimap() -> Element {
 }
 
 #[component]
-fn Canvas(state: Signal<Option<MinimapState>>) -> Element {
+fn Canvas(
+    state: Signal<Option<MinimapState>>,
+    minimap: ReadOnlySignal<Option<MinimapData>>,
+    minimap_preset: ReadOnlySignal<Option<String>>,
+    position: Signal<(i32, i32)>,
+) -> Element {
+    use_effect(move || {
+        let Some(minimap) = minimap() else {
+            return;
+        };
+        let Some(preset) = minimap_preset() else {
+            return;
+        };
+        let bound_and_type = match minimap.rotation_mode {
+            RotationMode::StartToEnd | RotationMode::StartToEndThenReverse => None,
+            RotationMode::AutoMobbing(AutoMobbing { bound, .. }) => Some((bound, "AutoMobbing")),
+            RotationMode::PingPong(PingPong { bound, .. }) => Some((bound, "PingPong")),
+        };
+        let actions = minimap
+            .actions
+            .get(&preset)
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|action| match action {
+                Action::Move(ActionMove {
+                    position: Position { x, y, .. },
+                    condition,
+                    ..
+                })
+                | Action::Key(ActionKey {
+                    position: Some(Position { x, y, .. }),
+                    condition,
+                    ..
+                }) => Some(ActionView {
+                    x,
+                    y,
+                    condition: condition.to_string(),
+                }),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        spawn(async move {
+            let canvas = document::eval(MINIMAP_ACTIONS_JS);
+            let _ = canvas.send((
+                minimap.width,
+                minimap.height,
+                actions,
+                bound_and_type,
+                minimap.platforms,
+            ));
+        });
+    });
     // Draw minimap and update game state
     use_effect(move || {
         spawn(async move {
@@ -285,6 +423,10 @@ fn Canvas(state: Signal<Option<MinimapState>>) -> Element {
                     halting: current_state.halting,
                     detected_size: frame.as_ref().map(|(_, width, height)| (*width, *height)),
                 };
+
+                if *position.peek() != current_state.position.unwrap_or_default() {
+                    position.set(current_state.position.unwrap_or_default());
+                }
                 state.set(Some(current_state));
 
                 let Some((frame, width, height)) = frame else {
@@ -302,8 +444,15 @@ fn Canvas(state: Signal<Option<MinimapState>>) -> Element {
     });
 
     rsx! {
-        div { class: "h-31 rounded-2xl bg-gray-900",
-            canvas { class: "rounded-2xl w-full h-full", id: "canvas-minimap" }
+        div { class: "relative h-31 rounded-2xl bg-gray-900",
+            canvas {
+                class: "absolute inset-0 rounded-2xl w-full h-full",
+                id: "canvas-minimap",
+            }
+            canvas {
+                class: "absolute inset-0 rounded-2xl w-full h-full",
+                id: "canvas-minimap-actions",
+            }
         }
     }
 }
@@ -392,7 +541,7 @@ fn Buttons(state: ReadOnlySignal<Option<MinimapState>>) -> Element {
     rsx! {
         div { class: "flex h-10 justify-center items-center gap-4",
             Button {
-                class: "w-20 h-6",
+                class: "w-20",
                 text: if halting() { "Start" } else { "Stop" },
                 kind: ButtonKind::Primary,
                 on_click: move || async move {
@@ -400,7 +549,7 @@ fn Buttons(state: ReadOnlySignal<Option<MinimapState>>) -> Element {
                 },
             }
             Button {
-                class: "w-20 h-6",
+                class: "w-20",
                 text: "Re-detect",
                 kind: ButtonKind::Primary,
                 on_click: move |_| async move {
