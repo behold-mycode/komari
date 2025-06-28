@@ -125,17 +125,7 @@ pub fn Characters() -> Element {
     rsx! {
         div { class: "flex flex-col pb-15 h-full overflow-y-auto scrollbar",
             SectionKeyBindings { config_view, save_config }
-            Section { name: "Buffs",
-                div { class: "grid grid-cols-5 gap-4",
-                    Buff {}
-                    Buff {}
-                    Buff {}
-                    Buff {}
-                    Buff {}
-                    Buff {}
-                    Buff {}
-                }
-            }
+            SectionBuffs { config_view, save_config }
             Section { name: "Fixed actions" }
             SectionOthers { config_view, save_config }
         }
@@ -321,6 +311,166 @@ fn SectionKeyBindings(
 }
 
 #[component]
+fn SectionBuffs(config_view: Memo<Configuration>, save_config: Callback<Configuration>) -> Element {
+    #[component]
+    fn Buff(
+        label: &'static str,
+        on_value: EventHandler<KeyBindingConfiguration>,
+        value: KeyBindingConfiguration,
+    ) -> Element {
+        rsx! {
+            div { class: "grid grid-cols-[140px_auto] gap-2",
+                KeyBindingConfigurationInput {
+                    label,
+                    on_value: move |config: Option<KeyBindingConfiguration>| {
+                        on_value(config.expect("not optional"));
+                    },
+                    value: Some(value),
+                }
+                Checkbox {
+                    label: "Enabled",
+                    on_value: move |enabled| {
+                        on_value(KeyBindingConfiguration {
+                            enabled,
+                            ..value
+                        });
+                    },
+                    value: value.enabled,
+                    input_class: "w-6",
+                }
+            }
+        }
+    }
+
+    rsx! {
+        Section { name: "Buffs",
+            div { class: "grid grid-cols-2 gap-4",
+                Buff {
+                    label: "Sayram's Elixir",
+                    on_value: move |sayram_elixir_key| {
+                        save_config(Configuration {
+                            sayram_elixir_key,
+                            ..config_view.peek().clone()
+                        });
+                    },
+                    value: config_view().sayram_elixir_key,
+                }
+                Buff {
+                    label: "Aurelia's Elixir",
+                    on_value: move |aurelia_elixir_key| {
+                        save_config(Configuration {
+                            aurelia_elixir_key,
+                            ..config_view.peek().clone()
+                        });
+                    },
+                    value: config_view().aurelia_elixir_key,
+                }
+                Buff {
+                    label: "3x EXP Coupon",
+                    on_value: move |exp_x3_key| {
+                        save_config(Configuration {
+                            exp_x3_key,
+                            ..config_view.peek().clone()
+                        });
+                    },
+                    value: config_view().exp_x3_key,
+                }
+                Buff {
+                    label: "50% Bonus EXP Coupon",
+                    on_value: move |bonus_exp_key| {
+                        save_config(Configuration {
+                            bonus_exp_key,
+                            ..config_view.peek().clone()
+                        });
+                    },
+                    value: config_view().bonus_exp_key,
+                }
+                Buff {
+                    label: "Legion's Wealth",
+                    on_value: move |legion_wealth_key| {
+                        save_config(Configuration {
+                            legion_wealth_key,
+                            ..config_view.peek().clone()
+                        });
+                    },
+                    value: config_view().legion_wealth_key,
+                }
+                Buff {
+                    label: "Legion's Luck",
+                    on_value: move |legion_luck_key| {
+                        save_config(Configuration {
+                            legion_luck_key,
+                            ..config_view.peek().clone()
+                        });
+                    },
+                    value: config_view().legion_luck_key,
+                }
+                Buff {
+                    label: "Wealth Acquisition Potion",
+                    on_value: move |wealth_acquisition_potion_key| {
+                        save_config(Configuration {
+                            wealth_acquisition_potion_key,
+                            ..config_view.peek().clone()
+                        });
+                    },
+                    value: config_view().wealth_acquisition_potion_key,
+                }
+                Buff {
+                    label: "EXP Accumulation Potion",
+                    on_value: move |exp_accumulation_potion_key| {
+                        save_config(Configuration {
+                            exp_accumulation_potion_key,
+                            ..config_view.peek().clone()
+                        });
+                    },
+                    value: config_view().exp_accumulation_potion_key,
+                }
+                Buff {
+                    label: "Extreme Red Potion",
+                    on_value: move |extreme_red_potion_key| {
+                        save_config(Configuration {
+                            extreme_red_potion_key,
+                            ..config_view.peek().clone()
+                        });
+                    },
+                    value: config_view().extreme_red_potion_key,
+                }
+                Buff {
+                    label: "Extreme Blue Potion",
+                    on_value: move |extreme_blue_potion_key| {
+                        save_config(Configuration {
+                            extreme_blue_potion_key,
+                            ..config_view.peek().clone()
+                        });
+                    },
+                    value: config_view().extreme_blue_potion_key,
+                }
+                Buff {
+                    label: "Extreme Green Potion",
+                    on_value: move |extreme_green_potion_key| {
+                        save_config(Configuration {
+                            extreme_green_potion_key,
+                            ..config_view.peek().clone()
+                        });
+                    },
+                    value: config_view().extreme_green_potion_key,
+                }
+                Buff {
+                    label: "Extreme Gold Potion",
+                    on_value: move |extreme_gold_potion_key| {
+                        save_config(Configuration {
+                            extreme_gold_potion_key,
+                            ..config_view.peek().clone()
+                        });
+                    },
+                    value: config_view().extreme_gold_potion_key,
+                }
+            }
+        }
+    }
+}
+
+#[component]
 fn SectionOthers(
     config_view: Memo<Configuration>,
     save_config: Callback<Configuration>,
@@ -399,13 +549,6 @@ fn SectionOthers(
                 }
             }
         }
-    }
-}
-
-#[component]
-fn Buff() -> Element {
-    rsx! {
-        div { class: "w-7 h-7 bg-gray-800" }
     }
 }
 
