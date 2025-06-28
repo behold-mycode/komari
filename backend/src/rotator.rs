@@ -663,12 +663,13 @@ impl Rotator {
             return;
         }
 
-        debug_assert!(self.normal_index < self.normal_actions.len());
         let len = self.normal_actions.len();
         if (self.normal_index + 1) == len {
             self.normal_actions_backward = !self.normal_actions_backward;
             self.normal_index = 0;
         }
+
+        debug_assert!(self.normal_index < self.normal_actions.len());
 
         let i = if self.normal_actions_backward {
             (len - self.normal_index).saturating_sub(1)
@@ -1371,10 +1372,7 @@ mod tests {
             &mut player,
             PingPong {
                 bound: Rect::new(20, 20, 80, 80).into(),
-                key: KeyBinding::default(),
-                key_count: 1,
-                key_wait_before_millis: 0,
-                key_wait_after_millis: 0,
+                ..Default::default()
             },
         );
 
@@ -1394,10 +1392,7 @@ mod tests {
             &mut player,
             PingPong {
                 bound: Rect::new(20, 20, 80, 80).into(),
-                key: KeyBinding::default(),
-                key_count: 1,
-                key_wait_before_millis: 0,
-                key_wait_after_millis: 0,
+                ..Default::default()
             },
         );
 

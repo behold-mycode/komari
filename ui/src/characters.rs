@@ -1103,7 +1103,7 @@ fn ActionConfigurationItem(action: ActionConfiguration) -> Element {
         None
     };
     let wait_secs = match (wait_before_secs, wait_after_secs) {
-        (Some(before), None) => format!("{before} - ⏱︎ 0.00s"),
+        (Some(before), None) => format!("{before} - ⏱︎ 0.00s / "),
         (None, None) => "".to_string(),
         (None, Some(after)) => format!("⏱︎ 0.00s - {after} / "),
         (Some(before), Some(after)) => format!("{before} - {after} / "),

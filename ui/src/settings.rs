@@ -1,9 +1,10 @@
 use std::fmt::Display;
 
 use backend::{
-    CaptureMode, FamiliarRarity, Familiars, InputMethod, IntoEnumIterator, Notifications,
-    PanicMode, Settings as SettingsData, SwappableFamiliars, query_capture_handles, query_settings,
-    select_capture_handle, update_settings, upsert_settings,
+    CaptureMode, FamiliarRarity, Familiars, InputMethod, IntoEnumIterator, KeyBinding,
+    KeyBindingConfiguration, Notifications, PanicMode, Settings as SettingsData,
+    SwappableFamiliars, query_capture_handles, query_settings, select_capture_handle,
+    update_settings, upsert_settings,
 };
 use dioxus::prelude::*;
 use futures_util::StreamExt;
@@ -12,7 +13,7 @@ use tokio::task::spawn_blocking;
 use crate::{
     AppState,
     button::{Button, ButtonKind},
-    inputs::{Checkbox, MillisInput, TextInput},
+    inputs::{Checkbox, KeyBindingInput, MillisInput, TextInput},
     select::{EnumSelect, Select},
 };
 
@@ -66,6 +67,7 @@ pub fn Settings() -> Element {
             SectionInput { settings_view, save_settings }
             SectionFamiliars { settings_view, save_settings }
             SectionNotifications { settings_view, save_settings }
+            SectionHotkeys { settings_view, save_settings }
             SectionOthers { settings_view, save_settings }
         }
     }
@@ -399,6 +401,91 @@ fn SectionNotifications(
                         });
                     },
                     value: notifications_view().notify_on_fail_or_change_map,
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn SectionHotkeys(
+    settings_view: Memo<SettingsData>,
+    save_settings: EventHandler<SettingsData>,
+) -> Element {
+    #[component]
+    fn Hotkey(
+        label: &'static str,
+        on_value: EventHandler<KeyBindingConfiguration>,
+        value: KeyBindingConfiguration,
+    ) -> Element {
+        rsx! {
+            div { class: "grid grid-cols-[140px_auto] gap-2",
+                KeyBindingInput {
+                    label,
+                    on_value: move |new_value: Option<KeyBinding>| {
+                        on_value(KeyBindingConfiguration {
+                            key: new_value.expect("not optional"),
+                            ..value
+                        });
+                    },
+                    value: Some(value.key),
+                }
+                SettingsCheckbox {
+                    label: "Enabled",
+                    on_value: move |enabled| {
+                        on_value(KeyBindingConfiguration {
+                            enabled,
+                            ..value
+                        });
+                    },
+                    value: value.enabled,
+                }
+            }
+        }
+    }
+
+    rsx! {
+        Section { name: "Hotkeys",
+            div { class: "grid grid-cols-2 gap-3",
+                Hotkey {
+                    label: "Toggle start/stop actions",
+                    on_value: move |toggle_actions_key| {
+                        save_settings(SettingsData {
+                            toggle_actions_key,
+                            ..settings_view.peek().clone()
+                        });
+                    },
+                    value: settings_view().toggle_actions_key,
+                }
+                Hotkey {
+                    label: "Add platform",
+                    on_value: move |platform_add_key| {
+                        save_settings(SettingsData {
+                            platform_add_key,
+                            ..settings_view.peek().clone()
+                        });
+                    },
+                    value: settings_view().platform_add_key,
+                }
+                Hotkey {
+                    label: "Mark platform start",
+                    on_value: move |platform_start_key| {
+                        save_settings(SettingsData {
+                            platform_start_key,
+                            ..settings_view.peek().clone()
+                        });
+                    },
+                    value: settings_view().platform_start_key,
+                }
+                Hotkey {
+                    label: "Mark platform end",
+                    on_value: move |platform_end_key| {
+                        save_settings(SettingsData {
+                            platform_end_key,
+                            ..settings_view.peek().clone()
+                        });
+                    },
+                    value: settings_view().platform_end_key,
                 }
             }
         }

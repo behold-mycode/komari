@@ -1,4 +1,3 @@
-#[cfg(debug_assertions)]
 use std::sync::LazyLock;
 #[cfg(debug_assertions)]
 use std::time::Instant;
@@ -572,12 +571,5 @@ fn config_actions(config: &Configuration) -> Vec<Action> {
 
         i += 1;
     }
-    vec.extend(
-        config
-            .actions
-            .iter()
-            .copied()
-            .filter_map(|action| action.enabled.then_some(Action::from(action))),
-    );
     vec
 }

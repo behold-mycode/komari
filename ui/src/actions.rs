@@ -7,7 +7,7 @@ use std::{
 use backend::{
     Action, ActionCondition, ActionKey, ActionKeyDirection, ActionKeyWith, ActionMove, AutoMobbing,
     Bound, IntoEnumIterator, KeyBinding, LinkKeyBinding, Minimap, MobbingKey, PingPong, Platform,
-    Position, RotationMode, update_minimap, upsert_map,
+    Position, RotationMode, key_receiver, update_minimap, upsert_map,
 };
 use dioxus::prelude::*;
 use futures_util::StreamExt;
@@ -566,8 +566,6 @@ fn SectionPlatforms(
     disabled: bool,
     save_minimap: EventHandler<Minimap>,
 ) -> Element {
-    let coroutine = use_coroutine_handle::<ActionUpdate>();
-
     #[component]
     fn PlatformItem(
         platform: Platform,
@@ -603,6 +601,46 @@ fn SectionPlatforms(
             }
         }
     }
+
+    let coroutine = use_coroutine_handle::<ActionUpdate>();
+    let settings = use_context::<AppState>().settings;
+    let position = use_context::<AppState>().position;
+
+    use_future(move || async move {
+        let mut platform = Platform::default();
+        let mut key_receiver = key_receiver().await;
+        loop {
+            let Ok(key) = key_receiver.recv().await else {
+                continue;
+            };
+            let Some(settings) = &*settings.peek() else {
+                continue;
+            };
+
+            if settings.platform_start_key.enabled && settings.platform_start_key.key == key {
+                platform.x_start = position.peek().0;
+                platform.y = position.peek().1;
+                continue;
+            }
+
+            if settings.platform_end_key.enabled && settings.platform_end_key.key == key {
+                platform.x_end = position.peek().0;
+                platform.x_end = if platform.x_end <= platform.x_start {
+                    platform.x_start + 1
+                } else {
+                    platform.x_end
+                };
+                platform.y = position.peek().1;
+                continue;
+            }
+
+            if settings.platform_add_key.enabled && settings.platform_add_key.key == key {
+                coroutine.send(ActionUpdate::AddPlatform(platform));
+                coroutine.send(ActionUpdate::SetPreset);
+                continue;
+            }
+        }
+    });
 
     rsx! {
         Section { name: "Platforms",
@@ -675,6 +713,7 @@ fn SectionPlatforms(
                     },
                     on_item_delete: move |_| {
                         coroutine.send(ActionUpdate::DeletePlatform(index));
+                        coroutine.send(ActionUpdate::SetPreset);
                     },
                 }
             }
