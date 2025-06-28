@@ -28,8 +28,9 @@ use crate::detect::{ArrowsCalibrating, ArrowsState, CachedDetector, Detector};
 #[cfg(debug_assertions)]
 use crate::mat::OwnedMat;
 use crate::{
-    Action, ActionCondition, ActionKey, CaptureMode, Configuration, GameState, KeyBinding,
-    KeyBindingConfiguration, Minimap as MinimapData, PotionMode, RequestHandler, Settings,
+    Action, ActionCondition, ActionConfigurationCondition, ActionKey, CaptureMode, Configuration,
+    GameState, KeyBinding, KeyBindingConfiguration, Minimap as MinimapData, PotionMode,
+    RequestHandler, Settings,
     bridge::{ImageCapture, ImageCaptureKind, KeySenderMethod},
     buff::{BuffKind, BuffState},
     context::Context,
@@ -547,6 +548,29 @@ fn config_actions(config: &Configuration) -> Vec<Action> {
             wait_after_use_millis: 350,
             ..ActionKey::default()
         }));
+    }
+
+    let mut i = 0;
+    let config_actions = &config.actions;
+    while i < config_actions.len() {
+        let action = config_actions[i];
+        let enabled = action.enabled;
+
+        if enabled {
+            vec.push(action.into());
+        }
+        while i + 1 < config_actions.len() {
+            let action = config_actions[i + 1];
+            if !matches!(action.condition, ActionConfigurationCondition::Linked) {
+                break;
+            }
+            if enabled {
+                vec.push(action.into());
+            }
+            i += 1;
+        }
+
+        i += 1;
     }
     vec.extend(
         config

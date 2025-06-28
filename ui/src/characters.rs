@@ -1,7 +1,8 @@
 use std::fmt::Display;
 
 use backend::{
-    Class, Configuration, IntoEnumIterator, KeyBinding, KeyBindingConfiguration, PotionMode,
+    ActionConfiguration, ActionConfigurationCondition, ActionKeyWith, Class, Configuration,
+    IntoEnumIterator, KeyBinding, KeyBindingConfiguration, LinkKeyBinding, PotionMode,
     delete_config, query_configs, update_configuration, upsert_config,
 };
 use dioxus::prelude::*;
@@ -10,7 +11,9 @@ use tokio::task::spawn_blocking;
 
 use crate::{
     AppState,
-    inputs::{Checkbox, KeyBindingInput, MillisInput, PercentageInput},
+    button::{Button, ButtonKind},
+    icons::XIcon,
+    inputs::{Checkbox, KeyBindingInput, MillisInput, NumberInputU32, PercentageInput},
     select::{EnumSelect, TextSelect},
 };
 
@@ -20,6 +23,16 @@ enum ConfigurationUpdate {
     Save,
     Create(String),
     Delete,
+    AddAction(ActionConfiguration),
+    EditAction(ActionConfiguration, usize),
+    DeleteAction(usize),
+    ToggleAction(bool, usize),
+}
+
+#[derive(Clone, Copy, Debug)]
+enum ActionConfigurationInputKind {
+    Add(ActionConfiguration),
+    Edit(ActionConfiguration, usize),
 }
 
 #[component]
@@ -54,6 +67,17 @@ pub fn Characters() -> Element {
     // Handles async operations for configuration-related
     let coroutine = use_coroutine(
         move |mut rx: UnboundedReceiver<ConfigurationUpdate>| async move {
+            let mut save_config = async move |current_config: Configuration| {
+                let mut save_config = current_config.clone();
+                spawn_blocking(move || {
+                    upsert_config(&mut save_config).expect("failed to upsert config actions");
+                })
+                .await
+                .unwrap();
+                config.set(Some(current_config));
+                configs.restart();
+            };
+
             while let Some(message) = rx.next().await {
                 match message {
                     ConfigurationUpdate::Set => {
@@ -102,6 +126,39 @@ pub fn Characters() -> Element {
                             configs.restart();
                         }
                     }
+                    ConfigurationUpdate::AddAction(action) => {
+                        let Some(mut config) = config() else {
+                            continue;
+                        };
+
+                        config.actions.push(action);
+                        save_config(config).await;
+                    }
+                    ConfigurationUpdate::EditAction(action, index) => {
+                        let Some(mut config) = config() else {
+                            continue;
+                        };
+
+                        *config.actions.get_mut(index).unwrap() = action;
+                        save_config(config).await;
+                    }
+                    ConfigurationUpdate::DeleteAction(index) => {
+                        let Some(mut config) = config() else {
+                            continue;
+                        };
+
+                        config.actions.remove(index);
+                        save_config(config).await;
+                    }
+                    ConfigurationUpdate::ToggleAction(enabled, index) => {
+                        let Some(mut config) = config() else {
+                            continue;
+                        };
+
+                        let config_mut = config.actions.get_mut(index).unwrap();
+                        config_mut.enabled = enabled;
+                        save_config(config).await;
+                    }
                 }
             }
         },
@@ -111,6 +168,7 @@ pub fn Characters() -> Element {
         coroutine.send(ConfigurationUpdate::Save);
         coroutine.send(ConfigurationUpdate::Set);
     });
+    let action_input_kind = use_signal(|| None);
 
     // Sets a configuration if there is not one
     use_effect(move || {
@@ -126,9 +184,10 @@ pub fn Characters() -> Element {
         div { class: "flex flex-col pb-15 h-full overflow-y-auto scrollbar",
             SectionKeyBindings { config_view, save_config }
             SectionBuffs { config_view, save_config }
-            Section { name: "Fixed actions" }
+            SectionFixedActions { action_input_kind, config_view, save_config }
             SectionOthers { config_view, save_config }
         }
+        PopupActionConfigurationInput { action_input_kind, actions: config_view().actions }
         div { class: "flex items-center w-full h-10 bg-gray-950 absolute bottom-0 pr-2",
             TextSelect {
                 class: "flex-grow",
@@ -471,6 +530,40 @@ fn SectionBuffs(config_view: Memo<Configuration>, save_config: Callback<Configur
 }
 
 #[component]
+fn SectionFixedActions(
+    action_input_kind: Signal<Option<ActionConfigurationInputKind>>,
+    config_view: Memo<Configuration>,
+    save_config: Callback<Configuration>,
+) -> Element {
+    let coroutine = use_coroutine_handle::<ConfigurationUpdate>();
+
+    rsx! {
+        Section { name: "Fixed actions",
+            ActionConfigurationList {
+                on_add_click: move |_| {
+                    action_input_kind
+                        .set(
+                            Some(ActionConfigurationInputKind::Add(ActionConfiguration::default())),
+                        );
+                },
+                on_item_click: move |(action, index)| {
+                    action_input_kind.set(Some(ActionConfigurationInputKind::Edit(action, index)));
+                },
+                on_item_delete: move |index| {
+                    coroutine.send(ConfigurationUpdate::DeleteAction(index));
+                    coroutine.send(ConfigurationUpdate::Set);
+                },
+                on_item_toggle: move |(enabled, index)| {
+                    coroutine.send(ConfigurationUpdate::ToggleAction(enabled, index));
+                    coroutine.send(ConfigurationUpdate::Set);
+                },
+                actions: config_view().actions,
+            }
+        }
+    }
+}
+
+#[component]
 fn SectionOthers(
     config_view: Memo<Configuration>,
     save_config: Callback<Configuration>,
@@ -584,10 +677,16 @@ fn KeyBindingConfigurationInput(
 }
 
 #[component]
-fn CharactersCheckbox(label: &'static str, on_value: EventHandler<bool>, value: bool) -> Element {
+fn CharactersCheckbox(
+    label: &'static str,
+    #[props(default = String::default())] label_class: String,
+    on_value: EventHandler<bool>,
+    value: bool,
+) -> Element {
     rsx! {
         Checkbox {
             label,
+            label_class,
             input_class: "w-6",
             on_value,
             value,
@@ -598,11 +697,17 @@ fn CharactersCheckbox(label: &'static str, on_value: EventHandler<bool>, value: 
 #[component]
 fn CharactersSelect<T: 'static + Clone + PartialEq + Display + IntoEnumIterator>(
     label: &'static str,
+    #[props(default = false)] disabled: bool,
     on_select: EventHandler<T>,
     selected: T,
 ) -> Element {
     rsx! {
-        EnumSelect { label, on_select, selected }
+        EnumSelect {
+            label,
+            disabled,
+            on_select,
+            selected,
+        }
     }
 }
 
@@ -618,8 +723,401 @@ fn CharactersPercentageInput(
 }
 
 #[component]
-fn CharactersMillisInput(label: &'static str, on_value: EventHandler<u64>, value: u64) -> Element {
+fn CharactersMillisInput(
+    label: &'static str,
+    #[props(default = false)] disabled: bool,
+    on_value: EventHandler<u64>,
+    value: u64,
+) -> Element {
     rsx! {
-        MillisInput { label, on_value, value }
+        MillisInput {
+            label,
+            disabled,
+            on_value,
+            value,
+        }
+    }
+}
+
+#[component]
+fn PopupActionConfigurationInput(
+    action_input_kind: Signal<Option<ActionConfigurationInputKind>>,
+    actions: ReadOnlySignal<Vec<ActionConfiguration>>,
+) -> Element {
+    #[derive(PartialEq, Clone, Debug)]
+    struct State {
+        action: ActionConfiguration,
+        modifying: bool,
+        section_text: String,
+        can_create_linked_action: bool,
+    }
+
+    let state = use_memo(move || {
+        action_input_kind().map(|kind| {
+            let (action, index) = match kind {
+                ActionConfigurationInputKind::Add(action) => (action, None),
+                ActionConfigurationInputKind::Edit(action, index) => (action, Some(index)),
+            };
+            let modifying = matches!(kind, ActionConfigurationInputKind::Edit(_, _));
+            let can_create_linked_action = match action.condition {
+                ActionConfigurationCondition::EveryMillis(_) => {
+                    !actions().is_empty() && index != Some(0)
+                }
+                ActionConfigurationCondition::Linked => false,
+            };
+            let section_text = if modifying {
+                "Modify a fixed action".to_string()
+            } else {
+                "Add a new fixed action".to_string()
+            };
+
+            State {
+                action,
+                modifying,
+                section_text,
+                can_create_linked_action,
+            }
+        })
+    });
+    let coroutine = use_coroutine_handle::<ConfigurationUpdate>();
+
+    rsx! {
+        if let Some(State { action, modifying, section_text, can_create_linked_action }) = state() {
+            div { class: "p-8 w-full h-full absolute inset-0 z-1 bg-gray-950/80",
+                div { class: "bg-gray-900 h-full px-2",
+                    div { class: "flex flex-col gap-2 relative h-full",
+                        div { class: "flex flex-none items-center title-xs h-10", {section_text} }
+                        ActionConfigurationInput {
+                            modifying,
+                            can_create_linked_action,
+                            on_cancel: move |_| {
+                                action_input_kind.set(None);
+                            },
+                            on_value: move |action| {
+                                let update = match action_input_kind
+                                    .take()
+                                    .expect("input kind must already be set")
+                                {
+                                    ActionConfigurationInputKind::Add(_) => {
+                                        ConfigurationUpdate::AddAction(action)
+                                    }
+                                    ActionConfigurationInputKind::Edit(_, index) => {
+                                        ConfigurationUpdate::EditAction(action, index)
+                                    }
+                                };
+                                coroutine.send(update);
+                                coroutine.send(ConfigurationUpdate::Set);
+                            },
+                            value: action,
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn ActionConfigurationInput(
+    modifying: bool,
+    can_create_linked_action: bool,
+    on_cancel: EventHandler,
+    on_value: EventHandler<ActionConfiguration>,
+    value: ActionConfiguration,
+) -> Element {
+    let mut action = use_signal(|| value);
+    let millis = use_memo(move || match action().condition {
+        ActionConfigurationCondition::EveryMillis(millis) => Some(millis),
+        ActionConfigurationCondition::Linked => None,
+    });
+
+    use_effect(use_reactive!(|value| { action.set(value) }));
+
+    rsx! {
+        div { class: "grid grid-cols-3 gap-3 pb-10 overflow-y-auto scrollbar",
+            // Key, count and link key
+            KeyBindingInput {
+                label: "Key",
+                input_class: "border border-gray-600",
+                on_value: move |key: Option<KeyBinding>| {
+                    let mut action = action.write();
+                    action.key = key.expect("not optional");
+                },
+                value: Some(action().key),
+            }
+            NumberInputU32 {
+                label: "Use count",
+                on_value: move |count| {
+                    let mut action = action.write();
+                    action.count = count;
+                },
+                minimum_value: 1,
+                value: action().count,
+            }
+            if can_create_linked_action {
+                CharactersCheckbox {
+                    label: "Linked action",
+                    on_value: move |is_linked: bool| {
+                        let mut action = action.write();
+                        action.condition = if is_linked {
+                            ActionConfigurationCondition::Linked
+                        } else {
+                            value.condition
+                        };
+                    },
+                    value: matches!(action().condition, ActionConfigurationCondition::Linked),
+                }
+            } else {
+                div {} // Spacer
+            }
+            KeyBindingInput {
+                label: "Link key",
+                input_class: "border border-gray-600",
+                disabled: action().link_key.is_none(),
+                on_value: move |key: Option<KeyBinding>| {
+                    let mut action = action.write();
+                    action.link_key = action
+                        .link_key
+                        .map(|link_key| link_key.with_key(key.expect("not optional")));
+                },
+                value: action().link_key.unwrap_or_default().key(),
+            }
+            CharactersSelect::<LinkKeyBinding> {
+                label: "Link key type",
+                disabled: action().link_key.is_none(),
+                on_select: move |link_key: LinkKeyBinding| {
+                    let mut action = action.write();
+                    action.link_key = Some(
+                        link_key.with_key(action.link_key.expect("has link key if selectable").key()),
+                    );
+                },
+                selected: action().link_key.unwrap_or_default(),
+            }
+            CharactersCheckbox {
+                label: "Has link key",
+                on_value: move |has_link_key: bool| {
+                    let mut action = action.write();
+                    action.link_key = has_link_key.then_some(LinkKeyBinding::default());
+                },
+                value: action().link_key.is_some(),
+            }
+
+            // Use with
+            CharactersSelect::<ActionKeyWith> {
+                label: "Use with",
+                on_select: move |with| {
+                    let mut action = action.write();
+                    action.with = with;
+                },
+                selected: action().with,
+            }
+            CharactersMillisInput {
+                label: "Use every",
+                disabled: millis().is_none(),
+                on_value: move |new_millis| {
+                    if millis.peek().is_some() {
+                        let mut action = action.write();
+                        action.condition = ActionConfigurationCondition::EveryMillis(new_millis);
+                    }
+                },
+                value: millis().unwrap_or_default(),
+            }
+            div {} // Spacer
+
+            // Wait before use
+            CharactersMillisInput {
+                label: "Wait before",
+                on_value: move |millis| {
+                    let mut action = action.write();
+                    action.wait_before_millis = millis;
+                },
+                value: action().wait_before_millis,
+            }
+            CharactersMillisInput {
+                label: "Wait random range",
+                on_value: move |millis| {
+                    let mut action = action.write();
+                    action.wait_before_millis_random_range = millis;
+                },
+                value: action().wait_before_millis_random_range,
+            }
+            div {} // Spacer
+
+            // Wait after use
+            CharactersMillisInput {
+                label: "Wait after",
+                on_value: move |millis| {
+                    let mut action = action.write();
+                    action.wait_after_millis = millis;
+                },
+                value: action().wait_after_millis,
+            }
+            CharactersMillisInput {
+                label: "Wait random range",
+                on_value: move |millis| {
+                    let mut action = action.write();
+                    action.wait_after_millis_random_range = millis;
+                },
+                value: action().wait_after_millis_random_range,
+            }
+        }
+        div { class: "flex w-full gap-3 absolute bottom-0 py-2 bg-gray-900",
+            Button {
+                class: "flex-grow border border-gray-600",
+                text: if modifying { "Save" } else { "Add" },
+                kind: ButtonKind::Primary,
+                on_click: move |_| {
+                    on_value(*action.peek());
+                },
+            }
+            Button {
+                class: "flex-grow border border-gray-600",
+                text: "Cancel",
+                kind: ButtonKind::Danger,
+                on_click: move |_| {
+                    on_cancel(());
+                },
+            }
+        }
+    }
+}
+
+#[component]
+fn ActionConfigurationList(
+    on_add_click: EventHandler,
+    on_item_click: EventHandler<(ActionConfiguration, usize)>,
+    on_item_delete: EventHandler<usize>,
+    on_item_toggle: EventHandler<(bool, usize)>,
+    actions: Vec<ActionConfiguration>,
+) -> Element {
+    #[component]
+    fn Icons(condition: ActionConfigurationCondition, on_item_delete: EventHandler) -> Element {
+        const ICON_CONTAINER_CLASS: &str = "w-4 h-6 flex justify-center items-center";
+        const ICON_CLASS: &str = "w-[11px] h-[11px] fill-current";
+
+        let container_margin = if matches!(condition, ActionConfigurationCondition::Linked) {
+            ""
+        } else {
+            "mt-2"
+        };
+        rsx! {
+            div { class: "absolute invisible group-hover:visible top-0 right-1 flex {container_margin}",
+                div {
+                    class: ICON_CONTAINER_CLASS,
+                    onclick: move |e| {
+                        e.stop_propagation();
+                        on_item_delete(());
+                    },
+                    XIcon { class: "{ICON_CLASS} text-red-500" }
+                }
+            }
+        }
+    }
+
+    rsx! {
+        div { class: "flex flex-col",
+            for (index , action) in actions.into_iter().enumerate() {
+                div { class: "flex items-end",
+                    div {
+                        class: "relative group flex-grow",
+                        onclick: move |e| {
+                            e.stop_propagation();
+                            on_item_click((action, index));
+                        },
+                        ActionConfigurationItem { action }
+                        Icons {
+                            condition: action.condition,
+                            on_item_delete: move |_| {
+                                on_item_delete(index);
+                            },
+                        }
+                    }
+                    div { class: "w-8 flex flex-col items-end",
+                        if !matches!(action.condition, ActionConfigurationCondition::Linked) {
+                            CharactersCheckbox {
+                                label: "",
+                                label_class: "collapse",
+                                on_value: move |enabled| {
+                                    on_item_toggle((enabled, index));
+                                },
+                                value: action.enabled,
+                            }
+                        }
+                    }
+                }
+            }
+            Button {
+                text: "Add action",
+                kind: ButtonKind::Secondary,
+                on_click: move |_| {
+                    on_add_click(());
+                },
+                class: "label mt-2",
+            }
+        }
+    }
+}
+
+#[component]
+fn ActionConfigurationItem(action: ActionConfiguration) -> Element {
+    const ITEM_TEXT_CLASS: &str =
+        "text-center inline-block pt-1 text-ellipsis overflow-hidden whitespace-nowrap";
+    const ITEM_BORDER_CLASS: &str = "border-r-2 border-gray-700";
+
+    let ActionConfiguration {
+        key,
+        link_key,
+        count,
+        condition,
+        with,
+        wait_before_millis,
+        wait_after_millis,
+        ..
+    } = action;
+
+    let linked_action = if matches!(condition, ActionConfigurationCondition::Linked) {
+        ""
+    } else {
+        "mt-2"
+    };
+    let link_key = match link_key {
+        Some(LinkKeyBinding::Before(key)) => format!("{key} ↝ "),
+        Some(LinkKeyBinding::After(key)) => format!("{key} ↜ "),
+        Some(LinkKeyBinding::AtTheSame(key)) => format!("{key} ↭ "),
+        Some(LinkKeyBinding::Along(key)) => format!("{key} ↷ "),
+        None => "".to_string(),
+    };
+    let millis = if let ActionConfigurationCondition::EveryMillis(millis) = condition {
+        format!("⟳ {:.2}s / ", millis as f32 / 1000.0)
+    } else {
+        "".to_string()
+    };
+    let wait_before_secs = if wait_before_millis > 0 {
+        Some(format!("⏱︎ {:.2}s", wait_before_millis as f32 / 1000.0))
+    } else {
+        None
+    };
+    let wait_after_secs = if wait_after_millis > 0 {
+        Some(format!("⏱︎ {:.2}s", wait_after_millis as f32 / 1000.0))
+    } else {
+        None
+    };
+    let wait_secs = match (wait_before_secs, wait_after_secs) {
+        (Some(before), None) => format!("{before} - ⏱︎ 0.00s"),
+        (None, None) => "".to_string(),
+        (None, Some(after)) => format!("⏱︎ 0.00s - {after} / "),
+        (Some(before), Some(after)) => format!("{before} - {after} / "),
+    };
+    let with = match with {
+        ActionKeyWith::Any => "Any",
+        ActionKeyWith::Stationary => "Stationary",
+        ActionKeyWith::DoubleJump => "Double jump",
+    };
+
+    rsx! {
+        div { class: "grid grid-cols-[100px_auto] h-6 paragraph-xs !text-gray-400 group-hover:bg-gray-900 {linked_action}",
+            div { class: "{ITEM_BORDER_CLASS} {ITEM_TEXT_CLASS}", "{link_key}{key} × {count}" }
+            div { class: "pr-13 {ITEM_TEXT_CLASS}", "{millis}{wait_secs}{with}" }
+        }
     }
 }

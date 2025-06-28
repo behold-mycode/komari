@@ -378,13 +378,29 @@ impl Default for PotionMode {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize, EnumIter, Display, EnumString)]
+pub enum ActionConfigurationCondition {
+    EveryMillis(u64),
+    Linked,
+}
+
+impl Default for ActionConfigurationCondition {
+    fn default() -> Self {
+        ActionConfigurationCondition::EveryMillis(180000)
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
 pub struct ActionConfiguration {
     pub key: KeyBinding,
-    pub every_millis: u64,
-    pub require_stationary: bool,
-    pub wait_before_use_millis: u64,
-    pub wait_after_use_millis: u64,
+    pub link_key: Option<LinkKeyBinding>,
+    pub count: u32,
+    pub condition: ActionConfigurationCondition,
+    pub with: ActionKeyWith,
+    pub wait_before_millis: u64,
+    pub wait_before_millis_random_range: u64,
+    pub wait_after_millis: u64,
+    pub wait_after_millis_random_range: u64,
     pub enabled: bool,
 }
 
@@ -393,10 +409,14 @@ impl Default for ActionConfiguration {
         // Template for a buff
         Self {
             key: KeyBinding::default(),
-            every_millis: 180000,
-            require_stationary: true,
-            wait_before_use_millis: 500,
-            wait_after_use_millis: 500,
+            link_key: None,
+            count: key_count_default(),
+            condition: ActionConfigurationCondition::default(),
+            with: ActionKeyWith::Stationary,
+            wait_before_millis: 500,
+            wait_before_millis_random_range: 0,
+            wait_after_millis: 500,
+            wait_after_millis_random_range: 0,
             enabled: false,
         }
     }
@@ -406,21 +426,22 @@ impl From<ActionConfiguration> for Action {
     fn from(value: ActionConfiguration) -> Self {
         Self::Key(ActionKey {
             key: value.key,
-            link_key: None,
-            count: key_count_default(),
+            link_key: value.link_key,
+            count: value.count,
             position: None,
-            condition: ActionCondition::EveryMillis(value.every_millis),
-            direction: ActionKeyDirection::Any,
-            with: if value.require_stationary {
-                ActionKeyWith::Stationary
-            } else {
-                Default::default()
+            condition: match value.condition {
+                ActionConfigurationCondition::EveryMillis(millis) => {
+                    ActionCondition::EveryMillis(millis)
+                }
+                ActionConfigurationCondition::Linked => ActionCondition::Linked,
             },
+            direction: ActionKeyDirection::Any,
+            with: value.with,
             queue_to_front: Some(true),
-            wait_before_use_millis: value.wait_before_use_millis,
-            wait_before_use_millis_random_range: 0,
-            wait_after_use_millis: value.wait_after_use_millis,
-            wait_after_use_millis_random_range: 0,
+            wait_before_use_millis: value.wait_before_millis,
+            wait_before_use_millis_random_range: value.wait_before_millis_random_range,
+            wait_after_use_millis: value.wait_after_millis,
+            wait_after_use_millis_random_range: value.wait_after_millis_random_range,
         })
     }
 }

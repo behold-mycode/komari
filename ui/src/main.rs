@@ -60,7 +60,7 @@ fn main() {
 
     backend::init();
     let window = WindowBuilder::new()
-        .with_inner_size(Size::Physical(PhysicalSize::new(896, 480)))
+        .with_inner_size(Size::Physical(PhysicalSize::new(1024, 480)))
         .with_resizable(false)
         .with_maximizable(false)
         .with_drag_and_drop(false)
@@ -93,7 +93,7 @@ fn App() -> Element {
         ]
     });
 
-    let mut selected_tab = use_signal(|| TAB_ACTIONS.to_string());
+    let mut selected_tab = use_signal(|| TAB_CHARACTERS.to_string());
     let mut script_loaded = use_signal(|| false);
 
     use_context_provider(|| AppState {
@@ -125,7 +125,7 @@ fn App() -> Element {
         document::Link { rel: "stylesheet", href: TAILWIND_CSS }
         document::Script { src: AUTO_NUMERIC_JS }
         if script_loaded() {
-            div { class: "flex min-w-4xl min-h-120 h-full bg-gray-950",
+            div { class: "flex min-w-5xl min-h-120 h-full bg-gray-950",
                 Minimap {}
                 Tabs {
                     tabs: TABS.clone(),

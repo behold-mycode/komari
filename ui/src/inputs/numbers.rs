@@ -7,6 +7,9 @@ use rand::distr::{Alphanumeric, SampleString};
 use super::{GenericInputProps, INPUT_CLASS, INPUT_DIV_CLASS, INPUT_LABEL_CLASS};
 use crate::inputs::LabeledInput;
 
+// TODO: on_value is called even though only value is changed. This is a bug caused
+// TODO: by use_auto_numeric when value is changed but not by manual keyboard
+// TODO: input.
 fn use_auto_numeric(
     id: Memo<String>,
     value: String,
@@ -26,6 +29,10 @@ fn use_auto_numeric(
         spawn(async move {
             let js = format!(
                 r#"
+                async function onRawValueModified(e) {{
+                    await dioxus.send(e.detail.newRawValue);
+                }}
+
                 const hasInput = {has_input};
                 const element = document.getElementById("{id}");
                 let autoNumeric = AutoNumeric.getAutoNumericElement(element);
@@ -38,12 +45,11 @@ fn use_auto_numeric(
                         suffixText: "{suffix}"
                     }});
                 }} else {{
+                    element.removeEventListener("autoNumeric:rawValueModified", onRawValueModified);
                     autoNumeric.set({value});
                 }}
                 if (hasInput) {{
-                    element.addEventListener("autoNumeric:rawValueModified", async (e) => {{
-                        await dioxus.send(e.detail.newRawValue);
-                    }}, {{ once: true }});
+                    element.addEventListener("autoNumeric:rawValueModified", onRawValueModified, {{ once: true }});
                 }}
             "#
             );

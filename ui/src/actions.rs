@@ -696,7 +696,8 @@ fn SectionPlatforms(
 fn SectionLegends() -> Element {
     rsx! {
         Section { name: "Action Legends", class: "paragraph-xs",
-            p { "⏱︎  - Wait after move" }
+            p { "⟳ - Repeat" }
+            p { "⏱︎  - Wait" }
             p { "ㄨ - No position" }
             p { "⇈ - Queue to front" }
             p { "⇆ - Any direction" }
@@ -965,6 +966,7 @@ fn PopupBoundInput(
     }
 }
 
+// TODO: Move popup_input_kind out and replace with callbacks
 #[component]
 fn PopupActionInput(
     popup_input_kind: Signal<Option<PopupInputKind>>,
@@ -1227,6 +1229,15 @@ fn ActionMoveInput(
     rsx! {
         div { class: "grid grid-cols-3 gap-3",
             // Position
+            ActionsCheckbox {
+                label: "Adjust",
+                on_value: move |adjust: bool| {
+                    let mut action = action.write();
+                    action.position.allow_adjusting = adjust;
+                },
+                value: action().position.allow_adjusting,
+            }
+            div { class: "col-span-2" }
             div { class: "relative group",
                 ActionsNumberInputI32 {
                     label: "X",
@@ -1244,6 +1255,15 @@ fn ActionMoveInput(
                     },
                     PositionIcon { class: ICON_CLASS }
                 }
+            }
+
+            ActionsNumberInputI32 {
+                label: "X random range",
+                on_value: move |x| {
+                    let mut action = action.write();
+                    action.position.x_random_range = x;
+                },
+                value: action().position.x_random_range,
             }
             div { class: "relative group",
                 ActionsNumberInputI32 {
@@ -1263,15 +1283,6 @@ fn ActionMoveInput(
                     PositionIcon { class: ICON_CLASS }
                 }
             }
-            ActionsCheckbox {
-                label: "Adjust",
-                on_value: move |adjust: bool| {
-                    let mut action = action.write();
-                    action.position.allow_adjusting = adjust;
-                },
-                value: action().position.allow_adjusting,
-            }
-
             ActionsMillisInput {
                 label: "Wait after move",
                 on_value: move |millis| {
@@ -1335,18 +1346,26 @@ fn ActionKeyInput(
     use_effect(use_reactive!(|value| { action.set(value) }));
 
     rsx! {
-        div { class: "grid grid-cols-3 gap-3 pb-10 overflow-y-auto scrollbar",
+        div { class: "grid grid-cols-3 gap-3 pb-10 pr-2 overflow-y-auto scrollbar",
             if can_have_position {
-                div { class: "col-span-3",
-                    ActionsCheckbox {
-                        label: "Positioned",
-                        on_value: move |has_position: bool| {
-                            let mut action = action.write();
-                            action.position = has_position.then_some(Position::default());
-                        },
-                        value: action().position.is_some(),
-                    }
+                ActionsCheckbox {
+                    label: "Positioned",
+                    on_value: move |has_position: bool| {
+                        let mut action = action.write();
+                        action.position = has_position.then_some(Position::default());
+                    },
+                    value: action().position.is_some(),
                 }
+                ActionsCheckbox {
+                    label: "Adjust",
+                    disabled: action().position.is_none(),
+                    on_value: move |adjust: bool| {
+                        let mut action = action.write();
+                        action.position.as_mut().unwrap().allow_adjusting = adjust;
+                    },
+                    value: action().position.map(|pos| pos.allow_adjusting).unwrap_or_default(),
+                }
+                div {}
 
 
                 // Position
@@ -1371,6 +1390,15 @@ fn ActionKeyInput(
                         }
                     }
                 }
+                ActionsNumberInputI32 {
+                    label: "X random range",
+                    disabled: action().position.is_none(),
+                    on_value: move |x| {
+                        let mut action = action.write();
+                        action.position.as_mut().unwrap().x_random_range = x;
+                    },
+                    value: action().position.map(|pos| pos.x_random_range).unwrap_or_default(),
+                }
                 div { class: "relative group",
                     ActionsNumberInputI32 {
                         label: "Y",
@@ -1391,15 +1419,6 @@ fn ActionKeyInput(
                             PositionIcon { class: ICON_CLASS }
                         }
                     }
-                }
-                ActionsCheckbox {
-                    label: "Adjust",
-                    disabled: action().position.is_none(),
-                    on_value: move |adjust: bool| {
-                        let mut action = action.write();
-                        action.position.as_mut().unwrap().allow_adjusting = adjust;
-                    },
-                    value: action().position.map(|pos| pos.allow_adjusting).unwrap_or_default(),
                 }
             }
 
@@ -1431,6 +1450,7 @@ fn ActionKeyInput(
                         } else {
                             value.condition
                         };
+                        action.queue_to_front = None;
                     },
                     value: matches!(action().condition, ActionCondition::Linked),
                 }
@@ -1471,7 +1491,7 @@ fn ActionKeyInput(
             // Use with, direction
 
             ActionsSelect::<ActionKeyWith> {
-                label: "Use key with",
+                label: "Use with",
                 disabled: false,
                 on_select: move |with| {
                     let mut action = action.write();
@@ -1481,7 +1501,7 @@ fn ActionKeyInput(
             }
             if can_have_direction {
                 ActionsSelect::<ActionKeyDirection> {
-                    label: "Use key direction",
+                    label: "Use direction",
                     disabled: false,
                     on_select: move |direction| {
                         let mut action = action.write();
@@ -1507,6 +1527,17 @@ fn ActionKeyInput(
                 }
             } else {
                 div {} // Spacer
+            }
+            if let ActionCondition::EveryMillis(millis) = action().condition {
+                ActionsMillisInput {
+                    label: "Use every",
+                    on_value: move |millis| {
+                        let mut action = action.write();
+                        action.condition = ActionCondition::EveryMillis(millis);
+                    },
+                    value: millis,
+                }
+                div { class: "col-span-2" }
             }
 
             // Wait before use
@@ -1693,11 +1724,12 @@ fn ActionMoveItem(action: ActionMove) -> Element {
     } else {
         "mt-2"
     };
+    let wait_secs = format!("⏱︎ {:.2}s", wait_after_move_millis as f32 / 1000.0);
 
     rsx! {
         div { class: "grid grid-cols-[140px_100px_auto] h-6 paragraph-xs !text-gray-400 group-hover:bg-gray-900 {linked_action}",
             div { class: "{ITEM_BORDER_CLASS} {ITEM_TEXT_CLASS}", "{position}" }
-            div { class: "{ITEM_TEXT_CLASS}", "⏱︎ {wait_after_move_millis}ms" }
+            div { class: "{ITEM_TEXT_CLASS}", "{wait_secs}" }
             div {}
         }
     }
@@ -1714,6 +1746,8 @@ fn ActionKeyItem(action: ActionKey) -> Element {
         direction,
         with,
         queue_to_front,
+        wait_before_use_millis,
+        wait_after_use_millis,
         ..
     } = action;
 
@@ -1754,6 +1788,32 @@ fn ActionKeyItem(action: ActionKey) -> Element {
         Some(LinkKeyBinding::Along(key)) => format!("{key} ↷ "),
         None => "".to_string(),
     };
+    let millis = if let ActionCondition::EveryMillis(millis) = condition {
+        format!("⟳ {:.2}s / ", millis as f32 / 1000.0)
+    } else {
+        "".to_string()
+    };
+    let wait_before_secs = if wait_before_use_millis > 0 {
+        Some(format!("⏱︎ {:.2}s", wait_before_use_millis as f32 / 1000.0))
+    } else {
+        None
+    };
+    let wait_after_secs = if wait_after_use_millis > 0 {
+        Some(format!("⏱︎ {:.2}s", wait_after_use_millis as f32 / 1000.0))
+    } else {
+        None
+    };
+    let wait_secs = match (wait_before_secs, wait_after_secs) {
+        (Some(before), None) => format!("{before} - ⏱︎ 0.00s"),
+        (None, None) => "".to_string(),
+        (None, Some(after)) => format!("⏱︎ 0.00s - {after} / "),
+        (Some(before), Some(after)) => format!("{before} - {after} / "),
+    };
+    let with = match with {
+        ActionKeyWith::Any => "Any",
+        ActionKeyWith::Stationary => "Stationary",
+        ActionKeyWith::DoubleJump => "Double jump",
+    };
 
     rsx! {
         div { class: "grid grid-cols-[140px_100px_30px_auto] h-6 paragraph-xs !text-gray-400 group-hover:bg-gray-900 {linked_action}",
@@ -1766,13 +1826,7 @@ fn ActionKeyItem(action: ActionKey) -> Element {
                     ActionKeyDirection::Right => "→",
                 }
             }
-            div { class: "pr-10 {ITEM_TEXT_CLASS}",
-                match with {
-                    ActionKeyWith::Any => "Any",
-                    ActionKeyWith::Stationary => "Stationary",
-                    ActionKeyWith::DoubleJump => "Double jump",
-                }
-            }
+            div { class: "pr-13 {ITEM_TEXT_CLASS}", "{millis}{wait_secs}{with}" }
         }
     }
 }

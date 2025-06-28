@@ -81,6 +81,7 @@ const MINIMAP_ACTIONS_JS: &str = r#"
         canvasCtx.stroke();
     }
 
+    canvasCtx.setLineDash([8]);
     canvasCtx.fillStyle = "rgb(255, 153, 128)";
     canvasCtx.strokeStyle = "rgb(255, 153, 128)";
     drawActions(canvas, canvasCtx, anyActions, true);
@@ -314,7 +315,7 @@ pub fn Minimap() -> Element {
             }
             Buttons { state }
             Info { state, minimap }
-            div { class: "flex-grow flex items-end px-2",
+            div { class: "px-2",
                 div { class: "h-10 w-full flex items-center",
                     TextSelect {
                         class: "w-full",
@@ -514,7 +515,7 @@ fn Info(
     });
 
     rsx! {
-        div { class: "flex flex-col justify-center px-4 py-3 gap-1 border-b border-gray-600",
+        div { class: "grid grid-cols-2 items-center justify-center px-4 py-3 gap-2 flex-grow",
             InfoItem { name: "State", value: info().state }
             InfoItem { name: "Position", value: info().position }
             InfoItem { name: "Health", value: info().health }
@@ -530,7 +531,8 @@ fn Info(
 #[component]
 fn InfoItem(name: String, value: String) -> Element {
     rsx! {
-        div { class: "flex paragraph font-mono", "{name} : {value}" }
+        p { class: "paragraph font-mono", "{name}" }
+        p { class: "paragraph text-right font-mono", "{value}" }
     }
 }
 
