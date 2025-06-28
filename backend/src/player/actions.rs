@@ -96,9 +96,13 @@ impl From<ActionMove> for PlayerActionMove {
 #[cfg_attr(test, derive(Default))]
 pub struct PlayerActionAutoMob {
     pub key: KeyBinding,
+    pub link_key: Option<LinkKeyBinding>,
     pub count: u32,
+    pub with: ActionKeyWith,
     pub wait_before_ticks: u32,
+    pub wait_before_ticks_random_range: u32,
     pub wait_after_ticks: u32,
+    pub wait_after_ticks_random_range: u32,
     pub position: Position,
 }
 
@@ -119,9 +123,13 @@ impl std::fmt::Display for PlayerActionAutoMob {
 #[cfg_attr(test, derive(Default))]
 pub struct PlayerActionPingPong {
     pub key: KeyBinding,
+    pub link_key: Option<LinkKeyBinding>,
     pub count: u32,
+    pub with: ActionKeyWith,
     pub wait_before_ticks: u32,
+    pub wait_before_ticks_random_range: u32,
     pub wait_after_ticks: u32,
+    pub wait_after_ticks_random_range: u32,
     /// Bound of ping pong action.
     ///
     /// This bound is in player relative coordinate.

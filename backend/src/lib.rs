@@ -9,7 +9,6 @@
 
 use std::sync::{LazyLock, Mutex};
 
-use anyhow::{Result, anyhow};
 use tokio::sync::{
     broadcast, mpsc,
     oneshot::{self, Sender},
@@ -38,12 +37,13 @@ mod task;
 pub use {
     context::init,
     database::{
-        Action, ActionCondition, ActionConfiguration, ActionKey, ActionKeyDirection, ActionKeyWith,
-        ActionMove, AutoMobbing, Bound, CaptureMode, Class, Configuration, FamiliarRarity,
-        Familiars, InputMethod, KeyBinding, KeyBindingConfiguration, LinkKeyBinding, Minimap,
-        Notifications, PanicMode, PingPong, Platform, Position, PotionMode, RotationMode, Settings,
-        SwappableFamiliars, delete_map, query_configs, query_maps, query_settings, upsert_config,
-        upsert_map, upsert_settings,
+        Action, ActionCondition, ActionConfiguration, ActionConfigurationCondition, ActionKey,
+        ActionKeyDirection, ActionKeyWith, ActionMove, AutoMobbing, Bound, CaptureMode, Class,
+        Configuration, FamiliarRarity, Familiars, InputMethod, KeyBinding, KeyBindingConfiguration,
+        LinkKeyBinding, Minimap, MobbingKey, Notifications, PanicMode, PingPong, Platform,
+        Position, PotionMode, RotationMode, Settings, SwappableFamiliars, delete_config,
+        delete_map, query_configs, query_maps, query_settings, upsert_config, upsert_map,
+        upsert_settings,
     },
     pathing::MAX_PLATFORMS_COUNT,
     rotator::RotatorMode,
@@ -82,15 +82,12 @@ macro_rules! expect_value_variant {
 #[derive(Debug)]
 enum Request {
     RotateActions(bool),
-    RotateActionsHalting,
     CreateMinimap(String),
     UpdateMinimap(Option<String>, Minimap),
     UpdateConfiguration(Configuration),
     UpdateSettings(Settings),
     RedetectMinimap,
-    GameState,
-    MinimapFrame,
-    MinimapPlatformsBound,
+    GameStateReceiver,
     KeyReceiver,
     QueryCaptureHandles,
     SelectCaptureHandle(Option<usize>),
@@ -113,15 +110,12 @@ enum Request {
 #[derive(Debug)]
 enum Response {
     RotateActions,
-    RotateActionsHalting(bool),
     CreateMinimap(Option<Minimap>),
     UpdateMinimap,
     UpdateConfiguration,
     UpdateSettings,
     RedetectMinimap,
-    GameState(GameState),
-    MinimapFrame(Option<(Vec<u8>, usize, usize)>),
-    MinimapPlatformsBound(Option<Bound>),
+    GameStateReceiver(broadcast::Receiver<GameState>),
     KeyReceiver(broadcast::Receiver<KeyBinding>),
     QueryCaptureHandles((Vec<String>, Option<usize>)),
     SelectCaptureHandle,
@@ -140,8 +134,6 @@ enum Response {
 pub(crate) trait RequestHandler {
     fn on_rotate_actions(&mut self, halting: bool);
 
-    fn on_rotate_actions_halting(&self) -> bool;
-
     fn on_create_minimap(&self, name: String) -> Option<Minimap>;
 
     fn on_update_minimap(&mut self, preset: Option<String>, minimap: Minimap);
@@ -152,11 +144,7 @@ pub(crate) trait RequestHandler {
 
     fn on_redetect_minimap(&mut self);
 
-    fn on_game_state(&self) -> GameState;
-
-    fn on_minimap_frame(&self) -> Option<(Vec<u8>, usize, usize)>;
-
-    fn on_minimap_platforms_bound(&self) -> Option<Bound>;
+    fn on_game_state_receiver(&self) -> broadcast::Receiver<GameState>;
 
     fn on_key_receiver(&self) -> broadcast::Receiver<KeyBinding>;
 
@@ -180,7 +168,7 @@ pub(crate) trait RequestHandler {
     fn on_test_spin_rune(&self);
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct GameState {
     pub position: Option<(i32, i32)>,
     pub health: Option<(u32, u32)>,
@@ -189,19 +177,14 @@ pub struct GameState {
     pub priority_action: Option<String>,
     pub erda_shower_state: String,
     pub destinations: Vec<(i32, i32)>,
+    pub halting: bool,
+    pub frame: Option<(Vec<u8>, usize, usize)>,
 }
 
 pub async fn rotate_actions(halting: bool) {
     expect_unit_variant!(
         request(Request::RotateActions(halting)).await,
         Response::RotateActions
-    )
-}
-
-pub async fn rotate_actions_halting() -> bool {
-    expect_value_variant!(
-        request(Request::RotateActionsHalting).await,
-        Response::RotateActionsHalting
     )
 }
 
@@ -240,19 +223,10 @@ pub async fn redetect_minimap() {
     )
 }
 
-pub async fn player_state() -> GameState {
-    expect_value_variant!(request(Request::GameState).await, Response::GameState)
-}
-
-pub async fn minimap_frame() -> Result<(Vec<u8>, usize, usize)> {
-    expect_value_variant!(request(Request::MinimapFrame).await, Response::MinimapFrame)
-        .ok_or(anyhow!("minimap frame not found"))
-}
-
-pub async fn minimap_platforms_bound() -> Option<Bound> {
+pub async fn game_state_receiver() -> broadcast::Receiver<GameState> {
     expect_value_variant!(
-        request(Request::MinimapPlatformsBound).await,
-        Response::MinimapPlatformsBound
+        request(Request::GameStateReceiver).await,
+        Response::GameStateReceiver
     )
 }
 
@@ -312,9 +286,6 @@ pub(crate) fn poll_request(handler: &mut dyn RequestHandler) {
                 handler.on_rotate_actions(halting);
                 Response::RotateActions
             }
-            Request::RotateActionsHalting => {
-                Response::RotateActionsHalting(handler.on_rotate_actions_halting())
-            }
             Request::CreateMinimap(name) => {
                 Response::CreateMinimap(handler.on_create_minimap(name))
             }
@@ -334,10 +305,8 @@ pub(crate) fn poll_request(handler: &mut dyn RequestHandler) {
                 handler.on_redetect_minimap();
                 Response::RedetectMinimap
             }
-            Request::GameState => Response::GameState(handler.on_game_state()),
-            Request::MinimapFrame => Response::MinimapFrame(handler.on_minimap_frame()),
-            Request::MinimapPlatformsBound => {
-                Response::MinimapPlatformsBound(handler.on_minimap_platforms_bound())
+            Request::GameStateReceiver => {
+                Response::GameStateReceiver(handler.on_game_state_receiver())
             }
             Request::KeyReceiver => Response::KeyReceiver(handler.on_key_receiver()),
             Request::QueryCaptureHandles => {

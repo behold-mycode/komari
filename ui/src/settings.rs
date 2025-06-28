@@ -1,77 +1,530 @@
-use std::{fmt::Display, str::FromStr};
+use std::fmt::Display;
 
 use backend::{
-    CaptureMode, InputMethod, IntoEnumIterator, KeyBindingConfiguration, PanicMode,
-    Settings as SettingsData, query_capture_handles, select_capture_handle,
+    CaptureMode, FamiliarRarity, Familiars, InputMethod, IntoEnumIterator, KeyBinding,
+    KeyBindingConfiguration, Notifications, PanicMode, Settings as SettingsData,
+    SwappableFamiliars, query_capture_handles, query_settings, select_capture_handle,
+    update_settings, upsert_settings,
 };
-#[cfg(debug_assertions)]
-use backend::{capture_image, infer_minimap, infer_rune, record_images, test_spin_rune};
 use dioxus::prelude::*;
+use futures_util::StreamExt;
+use tokio::task::spawn_blocking;
 
 use crate::{
-    AppMessage,
-    input::{Checkbox, LabeledInput},
-    key::KeyBindingConfigurationInput,
+    AppState,
+    button::{Button, ButtonKind},
+    inputs::{Checkbox, KeyBindingInput, MillisInput, TextInput},
     select::{EnumSelect, Select},
 };
 
-const TOGGLE_ACTIONS: &str = "Start/Stop Actions";
-const PLATFORM_START: &str = "Mark Platform Start";
-const PLATFORM_END: &str = "Mark Platform End";
-const PLATFORM_ADD: &str = "Add Platform";
-
-const SELECT_DIV_CLASS: &str = "flex items-center space-x-4";
-const SELECT_LABEL_CLASS: &str =
-    "text-xs text-gray-700 flex-1 inline-block data-[disabled]:text-gray-400";
-const SELECT_CLASS: &str = "w-44 h-7 text-xs text-gray-700 text-ellipsis border border-gray-300 rounded outline-none disabled:cursor-not-allowed disabled:text-gray-400";
+#[derive(Debug)]
+enum SettingsUpdate {
+    Set,
+    Save,
+}
 
 #[component]
-pub fn Settings(
-    app_coroutine: Coroutine<AppMessage>,
-    settings: ReadOnlySignal<Option<SettingsData>>,
-) -> Element {
+pub fn Settings() -> Element {
+    let mut settings = use_context::<AppState>().settings;
     let settings_view = use_memo(move || settings().unwrap_or_default());
-    let active = use_signal(|| None);
-    let on_settings = move |updated| {
-        app_coroutine.send(AppMessage::UpdateSettings(updated));
-    };
-    #[cfg(debug_assertions)]
-    let mut recording = use_signal(|| false);
 
-    rsx! {
-        div { class: "px-2 pb-2 pt-2 flex flex-col overflow-y-auto scrollbar h-full",
-            ul { class: "list-disc text-xs text-gray-700 pl-4",
-                li { class: "mb-1", "Platform keys must have a Map created and Platforms tab opened" }
-                li { class: "mb-1", "BltBltArea can stay behind other windows but cannot be minimized" }
-                li { class: "mb-1 font-bold",
-                    "BitBltArea relies on high-quality game images for detection (e.g. no blurry)"
-                }
-                li { class: "mb-1 font-bold",
-                    "When using BitBltArea, make sure the window on top of the capture area is the game or where the game images can be captured if the game is inside a something else (e.g. VM)"
-                }
-                li { class: "mb-1 font-bold",
-                    "When using BitBltArea, the game must be contained inside the capture area even when resizing (e.g. going to cash shop)"
-                }
-                li { class: "mb-1 font-bold",
-                    "When using BitBltArea, for key inputs to work, make sure the window on top of the capture area is focused by clicking it. For example, if you have Notepad on top of the game and focused, it will send input to the Notepad instead of the game."
+    // Handles async operations for settings-related
+    let coroutine = use_coroutine(
+        move |mut rx: UnboundedReceiver<SettingsUpdate>| async move {
+            while let Some(message) = rx.next().await {
+                match message {
+                    SettingsUpdate::Set => {
+                        update_settings(settings().expect("settings must be already set")).await;
+                    }
+                    SettingsUpdate::Save => {
+                        let mut settings = settings().expect("settings must be already set");
+
+                        spawn_blocking(move || {
+                            upsert_settings(&mut settings).unwrap();
+                        })
+                        .await
+                        .unwrap();
+                    }
                 }
             }
-            div { class: "h-2 border-b border-gray-300 mb-2" }
-            div { class: "flex flex-col space-y-3.5",
+        },
+    );
+    let save_settings = use_callback(move |new_settings: SettingsData| {
+        settings.set(Some(new_settings));
+        coroutine.send(SettingsUpdate::Save);
+        coroutine.send(SettingsUpdate::Set);
+    });
+
+    use_future(move || async move {
+        if settings.peek().is_none() {
+            settings.set(Some(spawn_blocking(query_settings).await.unwrap()));
+        }
+    });
+
+    rsx! {
+        div { class: "flex flex-col h-full overflow-y-auto scrollbar",
+            SectionCapture { settings_view, save_settings }
+            SectionInput { settings_view, save_settings }
+            SectionFamiliars { settings_view, save_settings }
+            SectionNotifications { settings_view, save_settings }
+            SectionHotkeys { settings_view, save_settings }
+            SectionOthers { settings_view, save_settings }
+        }
+    }
+}
+
+#[component]
+fn Section(name: &'static str, children: Element) -> Element {
+    rsx! {
+        div { class: "flex flex-col pr-4 pb-3",
+            div { class: "flex items-center title-xs h-10", {name} }
+            {children}
+        }
+    }
+}
+
+#[component]
+fn SectionCapture(
+    settings_view: Memo<SettingsData>,
+    save_settings: EventHandler<SettingsData>,
+) -> Element {
+    let mut selected_handle_index = use_signal(|| None);
+    let mut handle_names = use_resource(move || async move {
+        let (names, selected) = query_capture_handles().await;
+        selected_handle_index.set(selected);
+        names
+    });
+    let handle_names_with_default = use_memo(move || {
+        let default = vec!["Default".to_string()];
+        let names = handle_names().unwrap_or_default();
+
+        [default, names].concat()
+    });
+
+    rsx! {
+        Section { name: "Capture",
+            div { class: "grid grid-cols-2 gap-3",
+                SettingsSelect {
+                    label: "Handle",
+                    options: handle_names_with_default(),
+                    on_select: move |(index, _)| async move {
+                        if index == 0 {
+                            selected_handle_index.set(None);
+                        } else {
+                            selected_handle_index.set(Some(index - 1));
+                            select_capture_handle(Some(index - 1)).await;
+                        }
+                    },
+                    selected: selected_handle_index().unwrap_or_default(),
+                }
+                SettingsEnumSelect::<CaptureMode> {
+                    label: "Mode",
+                    on_select: move |capture_mode| {
+                        save_settings(SettingsData {
+                            capture_mode,
+                            ..settings_view.peek().clone()
+                        });
+                    },
+                    selected: settings_view().capture_mode,
+                }
+            }
+            Button {
+                text: "Refresh handles",
+                kind: ButtonKind::Secondary,
+                on_click: move |_| {
+                    handle_names.restart();
+                },
+                class: "mt-2",
+            }
+        }
+    }
+}
+
+#[component]
+fn SectionInput(
+    settings_view: Memo<SettingsData>,
+    save_settings: EventHandler<SettingsData>,
+) -> Element {
+    rsx! {
+        Section { name: "Input",
+            div { class: "grid grid-cols-3 gap-3",
+                SettingsEnumSelect::<InputMethod> {
+                    label: "Method",
+                    on_select: move |input_method| async move {
+                        save_settings(SettingsData {
+                            input_method,
+                            ..settings_view.peek().clone()
+                        });
+                    },
+                    selected: settings_view().input_method,
+                }
+                SettingsTextInput {
+                    text_label: "RPC server URL",
+                    button_label: "Update",
+                    on_value: move |input_method_rpc_server_url| {
+                        save_settings(SettingsData {
+                            input_method_rpc_server_url,
+                            ..settings_view.peek().clone()
+                        });
+                    },
+                    value: settings_view().input_method_rpc_server_url,
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn SectionFamiliars(
+    settings_view: Memo<SettingsData>,
+    save_settings: EventHandler<SettingsData>,
+) -> Element {
+    let familiars_view = use_memo(move || settings_view().familiars);
+
+    rsx! {
+        Section { name: "Familiars",
+            SettingsCheckbox {
+                label: "Enable swapping",
+                on_value: move |enable_familiars_swapping| {
+                    save_settings(SettingsData {
+                        familiars: Familiars {
+                            enable_familiars_swapping,
+                            ..familiars_view.peek().clone()
+                        },
+                        ..settings_view.peek().clone()
+                    });
+                },
+                value: familiars_view().enable_familiars_swapping,
+            }
+            div { class: "grid grid-cols-2 gap-3",
+                SettingsEnumSelect::<SwappableFamiliars> {
+                    label: "Swappable slots",
+                    disabled: !familiars_view().enable_familiars_swapping,
+                    on_select: move |swappable_familiars| async move {
+                        save_settings(SettingsData {
+                            familiars: Familiars {
+                                swappable_familiars,
+                                ..familiars_view.peek().clone()
+                            },
+                            ..settings_view.peek().clone()
+                        });
+                    },
+                    selected: familiars_view().swappable_familiars,
+                }
+                MillisInput {
+                    label: "Swap check milliseconds",
+                    disabled: !familiars_view().enable_familiars_swapping,
+                    on_value: move |swap_check_millis| {
+                        save_settings(SettingsData {
+                            familiars: Familiars {
+                                swap_check_millis,
+                                ..familiars_view.peek().clone()
+                            },
+                            ..settings_view.peek().clone()
+                        });
+                    },
+                    value: familiars_view().swap_check_millis,
+                }
+
                 SettingsCheckbox {
-                    label: "Enable Rune Solving",
-                    on_input: move |enable_rune_solving| {
-                        on_settings(SettingsData {
+                    label: "Can swap rare familiars",
+                    disabled: !familiars_view().enable_familiars_swapping,
+                    on_value: move |allowed| {
+                        let mut rarities = familiars_view.peek().swappable_rarities.clone();
+                        if allowed {
+                            rarities.insert(FamiliarRarity::Rare);
+                        } else {
+                            rarities.remove(&FamiliarRarity::Rare);
+                        }
+                        save_settings(SettingsData {
+                            familiars: Familiars {
+                                swappable_rarities: rarities,
+                                ..familiars_view.peek().clone()
+                            },
+                            ..settings_view.peek().clone()
+                        });
+                    },
+                    value: familiars_view().swappable_rarities.contains(&FamiliarRarity::Rare),
+                }
+                SettingsCheckbox {
+                    label: "Can swap epic familiars",
+                    disabled: !familiars_view().enable_familiars_swapping,
+                    on_value: move |allowed| {
+                        let mut rarities = familiars_view.peek().swappable_rarities.clone();
+                        if allowed {
+                            rarities.insert(FamiliarRarity::Epic);
+                        } else {
+                            rarities.remove(&FamiliarRarity::Epic);
+                        }
+                        save_settings(SettingsData {
+                            familiars: Familiars {
+                                swappable_rarities: rarities,
+                                ..familiars_view.peek().clone()
+                            },
+                            ..settings_view.peek().clone()
+                        });
+                    },
+                    value: familiars_view().swappable_rarities.contains(&FamiliarRarity::Epic),
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn SectionNotifications(
+    settings_view: Memo<SettingsData>,
+    save_settings: EventHandler<SettingsData>,
+) -> Element {
+    let notifications_view = use_memo(move || settings_view().notifications);
+
+    rsx! {
+        Section { name: "Notifications",
+            div { class: "grid grid-cols-2 gap-3 mb-2",
+                SettingsTextInput {
+                    text_label: "Discord webhook URL",
+                    button_label: "Update",
+                    on_value: move |discord_webhook_url| {
+                        save_settings(SettingsData {
+                            notifications: Notifications {
+                                discord_webhook_url,
+                                ..notifications_view.peek().clone()
+                            },
+                            ..settings_view.peek().clone()
+                        });
+                    },
+                    value: notifications_view().discord_webhook_url,
+                }
+                SettingsTextInput {
+                    text_label: "Discord ping user ID",
+                    button_label: "Update",
+                    on_value: move |discord_user_id| {
+                        save_settings(SettingsData {
+                            notifications: Notifications {
+                                discord_user_id,
+                                ..notifications_view.peek().clone()
+                            },
+                            ..settings_view.peek().clone()
+                        });
+                    },
+                    value: notifications_view().discord_user_id,
+                }
+            }
+            div { class: "grid grid-cols-3 gap-3",
+                SettingsCheckbox {
+                    label: "Rune spawns",
+                    on_value: move |notify_on_rune_appear| {
+                        save_settings(SettingsData {
+                            notifications: Notifications {
+                                notify_on_rune_appear,
+                                ..notifications_view.peek().clone()
+                            },
+                            ..settings_view.peek().clone()
+                        });
+                    },
+                    value: notifications_view().notify_on_rune_appear,
+                }
+                SettingsCheckbox {
+                    label: "Elite boss spawns",
+                    on_value: move |notify_on_elite_boss_appear| {
+                        save_settings(SettingsData {
+                            notifications: Notifications {
+                                notify_on_elite_boss_appear,
+                                ..notifications_view.peek().clone()
+                            },
+                            ..settings_view.peek().clone()
+                        });
+                    },
+                    value: notifications_view().notify_on_elite_boss_appear,
+                }
+                SettingsCheckbox {
+                    label: "Player dies",
+                    on_value: move |notify_on_player_die| {
+                        save_settings(SettingsData {
+                            notifications: Notifications {
+                                notify_on_player_die,
+                                ..notifications_view.peek().clone()
+                            },
+                            ..settings_view.peek().clone()
+                        });
+                    },
+                    value: notifications_view().notify_on_player_die,
+                }
+                SettingsCheckbox {
+                    label: "Guildie appears",
+                    on_value: move |notify_on_player_guildie_appear| {
+                        save_settings(SettingsData {
+                            notifications: Notifications {
+                                notify_on_player_guildie_appear,
+                                ..notifications_view.peek().clone()
+                            },
+                            ..settings_view.peek().clone()
+                        });
+                    },
+                    value: notifications_view().notify_on_player_guildie_appear,
+                }
+                SettingsCheckbox {
+                    label: "Stranger appears",
+                    on_value: move |notify_on_player_stranger_appear| {
+                        save_settings(SettingsData {
+                            notifications: Notifications {
+                                notify_on_player_stranger_appear,
+                                ..notifications_view.peek().clone()
+                            },
+                            ..settings_view.peek().clone()
+                        });
+                    },
+                    value: notifications_view().notify_on_player_stranger_appear,
+                }
+                SettingsCheckbox {
+                    label: "Friend appears",
+                    on_value: move |notify_on_player_friend_appear| {
+                        save_settings(SettingsData {
+                            notifications: Notifications {
+                                notify_on_player_friend_appear,
+                                ..notifications_view.peek().clone()
+                            },
+                            ..settings_view.peek().clone()
+                        });
+                    },
+                    value: notifications_view().notify_on_player_friend_appear,
+                }
+                SettingsCheckbox {
+                    label: "Detection fails or map changes",
+                    on_value: move |notify_on_fail_or_change_map| {
+                        save_settings(SettingsData {
+                            notifications: Notifications {
+                                notify_on_fail_or_change_map,
+                                ..notifications_view.peek().clone()
+                            },
+                            ..settings_view.peek().clone()
+                        });
+                    },
+                    value: notifications_view().notify_on_fail_or_change_map,
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn SectionHotkeys(
+    settings_view: Memo<SettingsData>,
+    save_settings: EventHandler<SettingsData>,
+) -> Element {
+    #[component]
+    fn Hotkey(
+        label: &'static str,
+        on_value: EventHandler<KeyBindingConfiguration>,
+        value: KeyBindingConfiguration,
+    ) -> Element {
+        rsx! {
+            div { class: "grid grid-cols-[140px_auto] gap-2",
+                KeyBindingInput {
+                    label,
+                    on_value: move |new_value: Option<KeyBinding>| {
+                        on_value(KeyBindingConfiguration {
+                            key: new_value.expect("not optional"),
+                            ..value
+                        });
+                    },
+                    value: Some(value.key),
+                }
+                SettingsCheckbox {
+                    label: "Enabled",
+                    on_value: move |enabled| {
+                        on_value(KeyBindingConfiguration {
+                            enabled,
+                            ..value
+                        });
+                    },
+                    value: value.enabled,
+                }
+            }
+        }
+    }
+
+    rsx! {
+        Section { name: "Hotkeys",
+            div { class: "grid grid-cols-2 gap-3",
+                Hotkey {
+                    label: "Toggle start/stop actions",
+                    on_value: move |toggle_actions_key| {
+                        save_settings(SettingsData {
+                            toggle_actions_key,
+                            ..settings_view.peek().clone()
+                        });
+                    },
+                    value: settings_view().toggle_actions_key,
+                }
+                Hotkey {
+                    label: "Add platform",
+                    on_value: move |platform_add_key| {
+                        save_settings(SettingsData {
+                            platform_add_key,
+                            ..settings_view.peek().clone()
+                        });
+                    },
+                    value: settings_view().platform_add_key,
+                }
+                Hotkey {
+                    label: "Mark platform start",
+                    on_value: move |platform_start_key| {
+                        save_settings(SettingsData {
+                            platform_start_key,
+                            ..settings_view.peek().clone()
+                        });
+                    },
+                    value: settings_view().platform_start_key,
+                }
+                Hotkey {
+                    label: "Mark platform end",
+                    on_value: move |platform_end_key| {
+                        save_settings(SettingsData {
+                            platform_end_key,
+                            ..settings_view.peek().clone()
+                        });
+                    },
+                    value: settings_view().platform_end_key,
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn SectionOthers(
+    settings_view: Memo<SettingsData>,
+    save_settings: EventHandler<SettingsData>,
+) -> Element {
+    rsx! {
+        Section { name: "Others",
+            div { class: "grid grid-cols-2 gap-3",
+                SettingsCheckbox {
+                    label: "Enable rune solving",
+                    on_value: move |enable_rune_solving| {
+                        save_settings(SettingsData {
                             enable_rune_solving,
                             ..settings_view.peek().clone()
                         });
                     },
                     value: settings_view().enable_rune_solving,
                 }
+                div {}
                 SettingsCheckbox {
-                    label: "Enable Change Channel On Elite Boss",
-                    on_input: move |enable_change_channel_on_elite_boss_appear| {
-                        on_settings(SettingsData {
+                    label: "Stop actions on fail or map changed",
+                    on_value: move |stop_on_fail_or_change_map| {
+                        save_settings(SettingsData {
+                            stop_on_fail_or_change_map,
+                            ..settings_view.peek().clone()
+                        });
+                    },
+                    value: settings_view().stop_on_fail_or_change_map,
+                }
+                SettingsCheckbox {
+                    label: "Change channel on elite boss spawns",
+                    on_value: move |enable_change_channel_on_elite_boss_appear| {
+                        save_settings(SettingsData {
                             enable_change_channel_on_elite_boss_appear,
                             ..settings_view.peek().clone()
                         });
@@ -79,9 +532,9 @@ pub fn Settings(
                     value: settings_view().enable_change_channel_on_elite_boss_appear,
                 }
                 SettingsCheckbox {
-                    label: "Enable Panic Mode",
-                    on_input: move |enable_panic_mode| {
-                        on_settings(SettingsData {
+                    label: "Enable panic mode",
+                    on_value: move |enable_panic_mode| {
+                        save_settings(SettingsData {
                             enable_panic_mode,
                             ..settings_view.peek().clone()
                         });
@@ -89,304 +542,101 @@ pub fn Settings(
                     value: settings_view().enable_panic_mode,
                 }
                 SettingsEnumSelect::<PanicMode> {
-                    label: "Panic Mode",
-                    on_select: move |panic_mode| {
-                        on_settings(SettingsData {
+                    label: "Mode",
+                    disabled: !settings_view().enable_panic_mode,
+                    on_select: move |panic_mode| async move {
+                        save_settings(SettingsData {
                             panic_mode,
                             ..settings_view.peek().clone()
                         });
                     },
-                    disabled: false,
                     selected: settings_view().panic_mode,
                 }
-                SettingsCheckbox {
-                    label: "Stop Actions If Fails / Changes Map",
-                    on_input: move |stop_on_fail_or_change_map| {
-                        on_settings(SettingsData {
-                            stop_on_fail_or_change_map,
-                            ..settings_view.peek().clone()
-                        });
-                    },
-                    value: settings_view().stop_on_fail_or_change_map,
-                }
-                SettingsEnumSelect::<CaptureMode> {
-                    label: "Capture Mode",
-                    on_select: move |capture_mode| {
-                        on_settings(SettingsData {
-                            capture_mode,
-                            ..settings_view.peek().clone()
-                        });
-                    },
-                    disabled: false,
-                    selected: settings_view().capture_mode,
-                }
-                SettingsCaptureHandleSelect { settings_view }
-                SettingsInputMethodSelect { app_coroutine, settings_view }
-                KeyBindingConfigurationInput {
-                    label: TOGGLE_ACTIONS,
-                    label_active: active,
-                    is_toggleable: true,
-                    is_disabled: false,
-                    on_input: move |key: Option<KeyBindingConfiguration>| {
-                        on_settings(SettingsData {
-                            toggle_actions_key: key.unwrap(),
-                            ..settings_view.peek().clone()
-                        });
-                    },
-                    value: Some(settings_view().toggle_actions_key),
-                }
-                KeyBindingConfigurationInput {
-                    label: PLATFORM_START,
-                    label_active: active,
-                    is_toggleable: true,
-                    is_disabled: false,
-                    on_input: move |key: Option<KeyBindingConfiguration>| {
-                        on_settings(SettingsData {
-                            platform_start_key: key.unwrap(),
-                            ..settings_view.peek().clone()
-                        });
-                    },
-                    value: Some(settings_view().platform_start_key),
-                }
-                KeyBindingConfigurationInput {
-                    label: PLATFORM_END,
-                    label_active: active,
-                    is_toggleable: true,
-                    is_disabled: false,
-                    on_input: move |key: Option<KeyBindingConfiguration>| {
-                        on_settings(SettingsData {
-                            platform_end_key: key.unwrap(),
-                            ..settings_view.peek().clone()
-                        });
-                    },
-                    value: Some(settings_view().platform_end_key),
-                }
-                KeyBindingConfigurationInput {
-                    label: PLATFORM_ADD,
-                    label_active: active,
-                    is_toggleable: true,
-                    is_disabled: false,
-                    on_input: move |key: Option<KeyBindingConfiguration>| {
-                        on_settings(SettingsData {
-                            platform_add_key: key.unwrap(),
-                            ..settings_view.peek().clone()
-                        });
-                    },
-                    value: Some(settings_view().platform_add_key),
-                }
-                {
-                    #[cfg(debug_assertions)]
-                    rsx! {
-                        SettingsDebugButton {
-                            label: "Capture Color Image",
-                            on_click: move |_| async {
-                                capture_image(false).await;
-                            },
-                        }
-                        SettingsDebugButton {
-                            label: "Capture Grayscale Image",
-                            on_click: move |_| async {
-                                capture_image(true).await;
-                            },
-                        }
-                        SettingsDebugButton {
-                            label: "Infer Rune",
-                            on_click: move |_| async {
-                                infer_rune().await;
-                            },
-                        }
-                        SettingsDebugButton {
-                            label: "Infer Minimap",
-                            on_click: move |_| async {
-                                infer_minimap().await;
-                            },
-                        }
-                        SettingsDebugButton {
-                            label: if recording() { "Stop Recording" } else { "Start Recording" },
-                            on_click: move |_| async move {
-                                let current = *recording.peek();
-                                record_images(!current).await;
-                                recording.set(!current);
-                            },
-                        }
-                        SettingsDebugButton {
-                            label: "Sandbox Spin Rune Test",
-                            on_click: move |_| async {
-                                test_spin_rune().await;
-                            },
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-#[cfg(debug_assertions)]
-#[component]
-fn SettingsDebugButton(label: String, on_click: EventHandler) -> Element {
-    rsx! {
-        button {
-            class: "button-primary h-8",
-            onclick: move |_| {
-                on_click(());
-            },
-            {label}
-        }
-    }
-}
-
-// TODO: Needs to group settings components
-#[component]
-pub fn SettingsCheckbox(label: String, on_input: EventHandler<bool>, value: bool) -> Element {
-    rsx! {
-        Checkbox {
-            label,
-            label_class: "text-xs text-gray-700 flex-1 inline-block data-[disabled]:text-gray-400",
-            div_class: "flex items-center space-x-4 mt-2",
-            input_class: "w-44 text-xs text-gray-700 text-ellipsis rounded outline-none disabled:cursor-not-allowed disabled:text-gray-400",
-            disabled: false,
-            on_input: move |checked| {
-                on_input(checked);
-            },
-            value,
-        }
-    }
-}
-
-#[component]
-pub fn SettingsTextInput(label: String, on_input: EventHandler<String>, value: String) -> Element {
-    let mut value = use_signal(move || value);
-
-    rsx! {
-        LabeledInput {
-            label,
-            label_class: "text-xs text-gray-700 flex-1 inline-block data-[disabled]:text-gray-400",
-            div_class: "flex space-x-2 items-center",
-            disabled: false,
-            input {
-                class: "w-24 text-gray-700 text-xs p-1 border rounded border-gray-300",
-                oninput: move |e| {
-                    value.set(e.parsed::<String>().unwrap_or_default());
-                },
-                value: value(),
-            }
-            button {
-                class: "button-primary w-18 h-full",
-                onclick: move |_| {
-                    on_input(value.peek().clone());
-                },
-                "Update"
             }
         }
     }
 }
 
 #[component]
-fn SettingsInputMethodSelect(
-    app_coroutine: Coroutine<AppMessage>,
-    settings_view: Memo<SettingsData>,
-) -> Element {
-    let on_settings = move |updated| {
-        app_coroutine.send(AppMessage::UpdateSettings(updated));
-    };
-
-    rsx! {
-        SettingsEnumSelect::<InputMethod> {
-            label: "Input Method",
-            on_select: move |input_method| {
-                on_settings(SettingsData {
-                    input_method,
-                    ..settings_view.peek().clone()
-                });
-            },
-            disabled: false,
-            selected: settings_view().input_method,
-        }
-        if matches!(settings_view().input_method, InputMethod::Rpc) {
-            SettingsTextInput {
-                label: "Server URL",
-                on_input: move |url| {
-                    on_settings(SettingsData {
-                        input_method_rpc_server_url: url,
-                        ..settings_view.peek().clone()
-                    });
-                },
-                value: settings_view().input_method_rpc_server_url,
-            }
-        }
-    }
-}
-
-// Dupe them till hard to manage
-#[component]
-pub fn SettingsEnumSelect<T: 'static + Clone + PartialEq + Display + FromStr + IntoEnumIterator>(
-    label: String,
-    on_select: EventHandler<T>,
-    disabled: bool,
-    selected: T,
+fn SettingsSelect<T: 'static + Clone + PartialEq + Display>(
+    label: &'static str,
+    options: Vec<T>,
+    on_select: EventHandler<(usize, T)>,
+    selected: usize,
 ) -> Element {
     rsx! {
-        EnumSelect {
+        Select {
             label,
-            disabled,
-            div_class: SELECT_DIV_CLASS,
-            label_class: SELECT_LABEL_CLASS,
-            select_class: SELECT_CLASS,
-            on_select: move |variant: T| {
-                on_select(variant);
-            },
+            options,
+            on_select,
             selected,
         }
     }
 }
 
 #[component]
-fn SettingsCaptureHandleSelect(settings_view: Memo<SettingsData>) -> Element {
-    const HANDLE_NOT_SELECTED: usize = usize::MAX;
-    const HANDLES_REFRESH: usize = usize::MAX - 1;
+fn SettingsEnumSelect<T: 'static + Clone + PartialEq + Display + IntoEnumIterator>(
+    label: &'static str,
+    #[props(default = false)] disabled: bool,
+    on_select: EventHandler<T>,
+    selected: T,
+) -> Element {
+    rsx! {
+        EnumSelect {
+            label,
+            disabled,
+            on_select,
+            selected,
+        }
+    }
+}
 
-    let mut selected_capture_handle = use_signal(|| None);
-    let mut capture_handles = use_resource(move || async move {
-        let (names, selected) = query_capture_handles().await;
-        selected_capture_handle.set(selected);
-        names
-    });
+#[component]
+fn SettingsCheckbox(
+    label: &'static str,
+    #[props(default = false)] disabled: bool,
+    on_value: EventHandler<bool>,
+    value: bool,
+) -> Element {
+    rsx! {
+        Checkbox {
+            label,
+            input_class: "w-6",
+            disabled,
+            on_value,
+            value,
+        }
+    }
+}
 
-    use_effect(move || {
-        let index = selected_capture_handle();
-        spawn(async move {
-            select_capture_handle(index).await;
-        });
-    });
+#[component]
+fn SettingsTextInput(
+    text_label: String,
+    button_label: String,
+    on_value: EventHandler<String>,
+    value: String,
+) -> Element {
+    let mut text = use_signal(String::default);
+
+    use_effect(use_reactive!(|value| text.set(value)));
 
     rsx! {
-        Select::<usize> {
-            label: "Capture Handle",
-            div_class: SELECT_DIV_CLASS,
-            label_class: SELECT_LABEL_CLASS,
-            select_class: SELECT_CLASS,
-            options: match capture_handles() {
-                Some(names) => {
-                    [(HANDLE_NOT_SELECTED, "Default".to_string())]
-                        .into_iter()
-                        .chain(names.into_iter().enumerate())
-                        .chain([(HANDLES_REFRESH, "Refresh handles...".to_string())])
-                        .collect()
-                }
-                None => vec![],
+        TextInput {
+            label: text_label,
+            on_value: move |new_text| {
+                text.set(new_text);
             },
-            disabled: matches!(settings_view().capture_mode, CaptureMode::BitBltArea),
-            on_select: move |(_, i)| {
-                if i == HANDLE_NOT_SELECTED {
-                    selected_capture_handle.set(None);
-                } else if i == HANDLES_REFRESH {
-                    capture_handles.restart();
-                } else {
-                    selected_capture_handle.set(Some(i));
-                }
-            },
-            selected: selected_capture_handle().unwrap_or(HANDLE_NOT_SELECTED),
+            value: text(),
+        }
+        div { class: "flex items-end",
+            Button {
+                text: button_label,
+                kind: ButtonKind::Primary,
+                on_click: move |_| {
+                    on_value(text.peek().clone());
+                },
+                class: "w-full",
+            }
         }
     }
 }

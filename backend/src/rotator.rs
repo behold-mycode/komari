@@ -189,10 +189,7 @@ impl Rotator {
         let mut i = 0;
         while i < actions.len() {
             let action = actions[i];
-            let condition = match action {
-                Action::Move(ActionMove { condition, .. })
-                | Action::Key(ActionKey { condition, .. }) => condition,
-            };
+            let condition = action.condition();
             let queue_to_front = match action {
                 Action::Move(_) => false,
                 Action::Key(ActionKey { queue_to_front, .. }) => queue_to_front.unwrap_or_default(),
@@ -530,13 +527,7 @@ impl Rotator {
         let Some(pos) = player.last_known_pos else {
             return;
         };
-        let AutoMobbing {
-            bound,
-            key,
-            key_count,
-            key_wait_before_millis,
-            key_wait_after_millis,
-        } = auto_mobbing;
+        let AutoMobbing { bound, key } = auto_mobbing;
         let bound = if player.config.auto_mob_platforms_bound {
             idle.platforms_bound.unwrap_or(bound.into())
         } else {
@@ -572,10 +563,16 @@ impl Rotator {
         player.set_normal_action(
             u32::MAX,
             PlayerAction::AutoMob(PlayerActionAutoMob {
-                key,
-                count: key_count.max(1),
-                wait_before_ticks: (key_wait_before_millis / MS_PER_TICK) as u32,
-                wait_after_ticks: (key_wait_after_millis / MS_PER_TICK) as u32,
+                key: key.key,
+                link_key: key.link_key,
+                count: key.count.max(1),
+                with: key.with,
+                wait_before_ticks: (key.wait_before_millis / MS_PER_TICK) as u32,
+                wait_before_ticks_random_range: (key.wait_before_millis_random_range / MS_PER_TICK)
+                    as u32,
+                wait_after_ticks: (key.wait_after_millis / MS_PER_TICK) as u32,
+                wait_after_ticks_random_range: (key.wait_after_millis_random_range / MS_PER_TICK)
+                    as u32,
                 position: Position {
                     x: point.x,
                     x_random_range: 0,
@@ -599,13 +596,7 @@ impl Rotator {
         let Some(pos) = player.last_known_pos else {
             return;
         };
-        let PingPong {
-            bound,
-            key,
-            key_count,
-            key_wait_before_millis,
-            key_wait_after_millis,
-        } = ping_pong;
+        let PingPong { bound, key } = ping_pong;
 
         let bbox = idle.bbox;
         let dist_left = pos.x - bbox.x;
@@ -625,10 +616,16 @@ impl Rotator {
         player.set_normal_action(
             u32::MAX - 1,
             PlayerAction::PingPong(PlayerActionPingPong {
-                key,
-                count: key_count.max(1),
-                wait_before_ticks: (key_wait_before_millis / MS_PER_TICK) as u32,
-                wait_after_ticks: (key_wait_after_millis / MS_PER_TICK) as u32,
+                key: key.key,
+                link_key: key.link_key,
+                count: key.count.max(1),
+                with: key.with,
+                wait_before_ticks: (key.wait_before_millis / MS_PER_TICK) as u32,
+                wait_before_ticks_random_range: (key.wait_before_millis_random_range / MS_PER_TICK)
+                    as u32,
+                wait_after_ticks: (key.wait_after_millis / MS_PER_TICK) as u32,
+                wait_after_ticks_random_range: (key.wait_after_millis_random_range / MS_PER_TICK)
+                    as u32,
                 bound,
                 direction,
             }),
@@ -666,12 +663,13 @@ impl Rotator {
             return;
         }
 
-        debug_assert!(self.normal_index < self.normal_actions.len());
         let len = self.normal_actions.len();
         if (self.normal_index + 1) == len {
             self.normal_actions_backward = !self.normal_actions_backward;
             self.normal_index = 0;
         }
+
+        debug_assert!(self.normal_index < self.normal_actions.len());
 
         let i = if self.normal_actions_backward {
             (len - self.normal_index).saturating_sub(1)
@@ -1374,10 +1372,7 @@ mod tests {
             &mut player,
             PingPong {
                 bound: Rect::new(20, 20, 80, 80).into(),
-                key: KeyBinding::default(),
-                key_count: 1,
-                key_wait_before_millis: 0,
-                key_wait_after_millis: 0,
+                ..Default::default()
             },
         );
 
@@ -1397,10 +1392,7 @@ mod tests {
             &mut player,
             PingPong {
                 bound: Rect::new(20, 20, 80, 80).into(),
-                key: KeyBinding::default(),
-                key_count: 1,
-                key_wait_before_millis: 0,
-                key_wait_after_millis: 0,
+                ..Default::default()
             },
         );
 

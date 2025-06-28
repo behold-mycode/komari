@@ -378,13 +378,29 @@ impl Default for PotionMode {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize, EnumIter, Display, EnumString)]
+pub enum ActionConfigurationCondition {
+    EveryMillis(u64),
+    Linked,
+}
+
+impl Default for ActionConfigurationCondition {
+    fn default() -> Self {
+        ActionConfigurationCondition::EveryMillis(180000)
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
 pub struct ActionConfiguration {
     pub key: KeyBinding,
-    pub every_millis: u64,
-    pub require_stationary: bool,
-    pub wait_before_use_millis: u64,
-    pub wait_after_use_millis: u64,
+    pub link_key: Option<LinkKeyBinding>,
+    pub count: u32,
+    pub condition: ActionConfigurationCondition,
+    pub with: ActionKeyWith,
+    pub wait_before_millis: u64,
+    pub wait_before_millis_random_range: u64,
+    pub wait_after_millis: u64,
+    pub wait_after_millis_random_range: u64,
     pub enabled: bool,
 }
 
@@ -393,10 +409,14 @@ impl Default for ActionConfiguration {
         // Template for a buff
         Self {
             key: KeyBinding::default(),
-            every_millis: 180000,
-            require_stationary: true,
-            wait_before_use_millis: 500,
-            wait_after_use_millis: 500,
+            link_key: None,
+            count: key_count_default(),
+            condition: ActionConfigurationCondition::default(),
+            with: ActionKeyWith::Stationary,
+            wait_before_millis: 500,
+            wait_before_millis_random_range: 0,
+            wait_after_millis: 500,
+            wait_after_millis_random_range: 0,
             enabled: false,
         }
     }
@@ -406,21 +426,22 @@ impl From<ActionConfiguration> for Action {
     fn from(value: ActionConfiguration) -> Self {
         Self::Key(ActionKey {
             key: value.key,
-            link_key: None,
-            count: key_count_default(),
+            link_key: value.link_key,
+            count: value.count,
             position: None,
-            condition: ActionCondition::EveryMillis(value.every_millis),
-            direction: ActionKeyDirection::Any,
-            with: if value.require_stationary {
-                ActionKeyWith::Stationary
-            } else {
-                Default::default()
+            condition: match value.condition {
+                ActionConfigurationCondition::EveryMillis(millis) => {
+                    ActionCondition::EveryMillis(millis)
+                }
+                ActionConfigurationCondition::Linked => ActionCondition::Linked,
             },
+            direction: ActionKeyDirection::Any,
+            with: value.with,
             queue_to_front: Some(true),
-            wait_before_use_millis: value.wait_before_use_millis,
-            wait_before_use_millis_random_range: 0,
-            wait_after_use_millis: value.wait_after_use_millis,
-            wait_after_use_millis_random_range: 0,
+            wait_before_use_millis: value.wait_before_millis,
+            wait_before_use_millis_random_range: value.wait_before_millis_random_range,
+            wait_after_use_millis: value.wait_after_millis,
+            wait_after_use_millis_random_range: value.wait_after_millis_random_range,
         })
     }
 }
@@ -458,47 +479,44 @@ impl From<Rect> for Bound {
 }
 
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
+pub struct MobbingKey {
+    pub key: KeyBinding,
+    pub link_key: Option<LinkKeyBinding>,
+    #[serde(default = "key_count_default")]
+    pub count: u32,
+    pub with: ActionKeyWith,
+    pub wait_before_millis: u64,
+    pub wait_before_millis_random_range: u64,
+    pub wait_after_millis: u64,
+    pub wait_after_millis_random_range: u64,
+}
+
+impl Default for MobbingKey {
+    fn default() -> Self {
+        Self {
+            key: KeyBinding::default(),
+            link_key: None,
+            count: key_count_default(),
+            with: ActionKeyWith::default(),
+            wait_before_millis: 0,
+            wait_before_millis_random_range: 0,
+            wait_after_millis: 0,
+            wait_after_millis_random_range: 0,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Debug, Serialize, Deserialize)]
 pub struct PingPong {
     pub bound: Bound,
-    pub key: KeyBinding,
-    #[serde(default = "key_count_default")]
-    pub key_count: u32,
-    pub key_wait_before_millis: u64,
-    pub key_wait_after_millis: u64,
+    #[serde(default)]
+    pub key: MobbingKey,
 }
 
-impl Default for PingPong {
-    fn default() -> Self {
-        Self {
-            bound: Bound::default(),
-            key: KeyBinding::default(),
-            key_count: key_count_default(),
-            key_wait_before_millis: 0,
-            key_wait_after_millis: 0,
-        }
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Default, PartialEq, Debug, Serialize, Deserialize)]
 pub struct AutoMobbing {
     pub bound: Bound,
-    pub key: KeyBinding,
-    #[serde(default = "key_count_default")]
-    pub key_count: u32,
-    pub key_wait_before_millis: u64,
-    pub key_wait_after_millis: u64,
-}
-
-impl Default for AutoMobbing {
-    fn default() -> Self {
-        Self {
-            bound: Bound::default(),
-            key: KeyBinding::default(),
-            key_count: key_count_default(),
-            key_wait_before_millis: 0,
-            key_wait_after_millis: 0,
-        }
-    }
+    pub key: MobbingKey,
 }
 
 fn key_count_default() -> u32 {
@@ -518,8 +536,7 @@ pub enum RotationMode {
 
 impl_identifiable!(Configuration);
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(PartialEq, Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Minimap {
     #[serde(skip_serializing)]
@@ -662,6 +679,28 @@ pub enum Class {
 pub enum Action {
     Move(ActionMove),
     Key(ActionKey),
+}
+
+impl Action {
+    pub fn condition(&self) -> ActionCondition {
+        match self {
+            Action::Move(action) => action.condition,
+            Action::Key(action) => action.condition,
+        }
+    }
+
+    pub fn with_condition(&self, condition: ActionCondition) -> Action {
+        match self {
+            Action::Move(action) => Action::Move(ActionMove {
+                condition,
+                ..*action
+            }),
+            Action::Key(action) => Action::Key(ActionKey {
+                condition,
+                ..*action
+            }),
+        }
+    }
 }
 
 #[derive(
@@ -978,6 +1017,10 @@ pub fn query_configs() -> Result<Vec<Configuration>> {
 
 pub fn upsert_config(config: &mut Configuration) -> Result<()> {
     upsert_to_table("configurations", config)
+}
+
+pub fn delete_config(config: &Configuration) -> Result<()> {
+    delete_from_table("configurations", config)
 }
 
 pub fn query_maps() -> Result<Vec<Minimap>> {
