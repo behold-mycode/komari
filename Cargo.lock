@@ -5633,6 +5633,7 @@ dependencies = [
  "num-traits",
  "rand 0.9.1",
  "serde",
+ "serde_json",
  "tokio",
 ]
 

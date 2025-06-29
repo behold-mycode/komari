@@ -1,5 +1,7 @@
 use std::{
     fmt::Display,
+    fs::File,
+    io::BufReader,
     mem::{discriminant, swap},
     ops::Range,
 };
@@ -11,6 +13,7 @@ use backend::{
 };
 use dioxus::prelude::*;
 use futures_util::StreamExt;
+use rand::distr::{Alphanumeric, SampleString};
 use tokio::task::spawn_blocking;
 
 use crate::{
@@ -40,6 +43,7 @@ enum ActionUpdate {
     Edit(Action, usize),
     Delete(usize),
     Move(usize, ActionCondition, bool),
+    Import(Vec<Action>),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -351,6 +355,36 @@ pub fn Actions() -> Element {
                     let _ = actions.drain(first_range);
                     for action in second_actions.into_iter().rev() {
                         actions.insert(first_start, action);
+                    }
+
+                    save_minimap(current_minimap).await;
+                }
+                ActionUpdate::Import(import_actions) => {
+                    let Some(mut current_minimap) = minimap() else {
+                        continue;
+                    };
+                    let Some(preset) = minimap_preset() else {
+                        continue;
+                    };
+                    let Some(actions) = current_minimap.actions.get_mut(&preset) else {
+                        continue;
+                    };
+
+                    let mut i = 0;
+                    while i < import_actions.len() {
+                        let action = import_actions[i];
+                        if matches!(action.condition(), ActionCondition::Linked) {
+                            // Malformed
+                            i += 1;
+                            continue;
+                        }
+
+                        actions.push(action);
+                        if let Some(range) = find_linked_action_range(&import_actions, i) {
+                            actions.extend(import_actions[range.clone()].iter().copied());
+                            i += range.count();
+                        }
+                        i += 1;
                     }
 
                     save_minimap(current_minimap).await;
@@ -763,6 +797,57 @@ fn SectionActions(
         popup_input_kind.set(Some(popup_kind));
     };
 
+    let export_element_id = use_memo(|| Alphanumeric.sample_string(&mut rand::rng(), 8));
+    let export = use_callback(move |_| {
+        let js = format!(
+            r#"
+            const element = document.getElementById("{}");
+            if (element === null) {{
+                return;
+            }}
+            const json = await dioxus.recv();
+
+            element.setAttribute("href", "data:application/json;charset=utf-8," + encodeURIComponent(json));
+            element.setAttribute("download", "actions.json");
+            element.click();
+            "#,
+            export_element_id(),
+        );
+        let eval = document::eval(js.as_str());
+        let Ok(json) = serde_json::to_string_pretty(&*minimap_preset_actions.peek()) else {
+            return;
+        };
+        let _ = eval.send(json);
+    });
+
+    let import_element_id = use_memo(|| Alphanumeric.sample_string(&mut rand::rng(), 8));
+    let import = use_callback(move |_| {
+        let js = format!(
+            r#"
+            const element = document.getElementById("{}");
+            if (element === null) {{
+                return;
+            }}
+            element.click();
+            "#,
+            import_element_id()
+        );
+        document::eval(js.as_str());
+    });
+    let import_actions = use_callback(move |files| {
+        for file in files {
+            let Ok(file) = File::open(file) else {
+                continue;
+            };
+            let reader = BufReader::new(file);
+            let Ok(actions) = serde_json::from_reader::<_, Vec<Action>>(reader) else {
+                continue;
+            };
+            coroutine.send(ActionUpdate::Import(actions));
+        }
+        coroutine.send(ActionUpdate::SetPreset);
+    });
+
     rsx! {
         Section { name: "Normal actions",
             ActionList {
@@ -833,6 +918,45 @@ fn SectionActions(
                 condition_filter: ActionCondition::EveryMillis(0),
                 disabled: actions_list_disabled(),
                 actions: minimap_preset_actions(),
+            }
+        }
+        Section { name: "Import/export actions",
+            div { class: "flex gap-2",
+                div { class: "flex-grow",
+                    a { id: export_element_id(), class: "w-0 h-0 invisible" }
+                    Button {
+                        class: "w-full",
+                        text: "Export",
+                        kind: ButtonKind::Primary,
+                        disabled: actions_list_disabled(),
+                        on_click: move |_| {
+                            export(());
+                        },
+                    }
+                }
+                div { class: "flex-grow",
+                    input {
+                        id: import_element_id(),
+                        class: "w-0 h-0 invisible",
+                        r#type: "file",
+                        accept: ".json",
+                        name: "Actions JSON",
+                        onchange: move |e| {
+                            if let Some(files) = e.data.files().map(|engine| engine.files()) {
+                                import_actions(files);
+                            }
+                        },
+                    }
+                    Button {
+                        class: "w-full",
+                        text: "Import",
+                        kind: ButtonKind::Primary,
+                        disabled: actions_list_disabled(),
+                        on_click: move |_| {
+                            import(());
+                        },
+                    }
+                }
             }
         }
     }
