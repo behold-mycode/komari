@@ -1,5 +1,6 @@
 use thiserror::Error;
 
+// TODO: Reorganizes errors
 #[derive(Error, PartialEq, Clone, Debug)]
 pub enum Error {
     #[error("the current window size is invalid")]

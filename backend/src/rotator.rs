@@ -146,6 +146,7 @@ pub struct Rotator {
     priority_actions_queue: VecDeque<u32>,
 }
 
+#[derive(Debug)]
 pub struct RotatorBuildArgs<'a> {
     pub mode: RotatorMode,
     pub actions: &'a [Action],
@@ -164,6 +165,7 @@ pub struct RotatorBuildArgs<'a> {
 
 impl Rotator {
     pub fn build_actions(&mut self, args: RotatorBuildArgs<'_>) {
+        debug!(target: "rotator", "preparing actions {args:?}");
         let RotatorBuildArgs {
             mode,
             actions,
@@ -179,7 +181,6 @@ impl Rotator {
             enable_familiars_swapping,
             enable_reset_normal_actions_on_erda,
         } = args;
-        debug!(target: "rotator", "preparing actions {actions:?} {buffs:?}");
         self.reset_queue();
         self.normal_actions.clear();
         self.normal_rotate_mode = mode;
