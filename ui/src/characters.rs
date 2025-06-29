@@ -429,6 +429,23 @@ fn SectionBuffs(character_view: Memo<Character>, save_character: Callback<Charac
     rsx! {
         Section { name: "Buffs",
             div { class: "grid grid-cols-2 gap-4",
+                Checkbox {
+                    label: "Familiar essence and skill",
+                    disabled: character_view().id.is_none(),
+                    on_value: move |enabled| {
+                        let character = character_view.peek().clone();
+                        save_character(Character {
+                            familiar_buff_key: KeyBindingConfiguration {
+                                enabled,
+                                ..character.familiar_buff_key
+                            },
+                            ..character
+                        });
+                    },
+                    value: character_view().familiar_buff_key.enabled,
+                    input_class: "w-6",
+                }
+                div {}
                 Buff {
                     label: "Sayram's Elixir",
                     disabled: character_view().id.is_none(),
