@@ -241,6 +241,7 @@ fn SectionKeyBindings(
                 KeyBindingConfigurationInput {
                     label: "Rope lift",
                     optional: true,
+                    disabled: character_view().id.is_none(),
                     on_value: move |ropelift_key| {
                         save_character(Character {
                             ropelift_key,
@@ -252,6 +253,7 @@ fn SectionKeyBindings(
                 KeyBindingConfigurationInput {
                     label: "Teleport",
                     optional: true,
+                    disabled: character_view().id.is_none(),
                     on_value: move |teleport_key| {
                         save_character(Character {
                             teleport_key,
@@ -262,6 +264,7 @@ fn SectionKeyBindings(
                 }
                 KeyBindingConfigurationInput {
                     label: "Jump",
+                    disabled: character_view().id.is_none(),
                     on_value: move |key_config: Option<KeyBindingConfiguration>| {
                         save_character(Character {
                             jump_key: key_config.expect("not optional"),
@@ -273,6 +276,7 @@ fn SectionKeyBindings(
                 KeyBindingConfigurationInput {
                     label: "Up jump",
                     optional: true,
+                    disabled: character_view().id.is_none(),
                     on_value: move |up_jump_key| {
                         save_character(Character {
                             up_jump_key,
@@ -283,6 +287,7 @@ fn SectionKeyBindings(
                 }
                 KeyBindingConfigurationInput {
                     label: "Interact",
+                    disabled: character_view().id.is_none(),
                     on_value: move |key_config: Option<KeyBindingConfiguration>| {
                         save_character(Character {
                             interact_key: key_config.expect("not optional"),
@@ -293,6 +298,7 @@ fn SectionKeyBindings(
                 }
                 KeyBindingConfigurationInput {
                     label: "Cash shop",
+                    disabled: character_view().id.is_none(),
                     on_value: move |key_config: Option<KeyBindingConfiguration>| {
                         save_character(Character {
                             cash_shop_key: key_config.expect("not optional"),
@@ -303,6 +309,7 @@ fn SectionKeyBindings(
                 }
                 KeyBindingConfigurationInput {
                     label: "Maple guide",
+                    disabled: character_view().id.is_none(),
                     on_value: move |key_config: Option<KeyBindingConfiguration>| {
                         save_character(Character {
                             maple_guide_key: key_config.expect("not optional"),
@@ -313,6 +320,7 @@ fn SectionKeyBindings(
                 }
                 KeyBindingConfigurationInput {
                     label: "Change channel",
+                    disabled: character_view().id.is_none(),
                     on_value: move |key_config: Option<KeyBindingConfiguration>| {
                         save_character(Character {
                             change_channel_key: key_config.expect("not optional"),
@@ -323,6 +331,7 @@ fn SectionKeyBindings(
                 }
                 KeyBindingConfigurationInput {
                     label: "Feed pet",
+                    disabled: character_view().id.is_none(),
                     on_value: move |key_config: Option<KeyBindingConfiguration>| {
                         save_character(Character {
                             feed_pet_key: key_config.expect("not optional"),
@@ -333,6 +342,7 @@ fn SectionKeyBindings(
                 }
                 KeyBindingConfigurationInput {
                     label: "Potion",
+                    disabled: character_view().id.is_none(),
                     on_value: move |key_config: Option<KeyBindingConfiguration>| {
                         save_character(Character {
                             potion_key: key_config.expect("not optional"),
@@ -344,6 +354,7 @@ fn SectionKeyBindings(
                 div { class: "col-span-full grid-cols-3 grid gap-2 justify-items-stretch",
                     KeyBindingConfigurationInput {
                         label: "Familiar menu",
+                        disabled: character_view().id.is_none(),
                         on_value: move |key_config: Option<KeyBindingConfiguration>| {
                             save_character(Character {
                                 familiar_menu_key: key_config.expect("not optional"),
@@ -354,6 +365,7 @@ fn SectionKeyBindings(
                     }
                     KeyBindingConfigurationInput {
                         label: "Familiar skill",
+                        disabled: character_view().id.is_none(),
                         on_value: move |key_config: Option<KeyBindingConfiguration>| {
                             save_character(Character {
                                 familiar_buff_key: key_config.expect("not optional"),
@@ -364,6 +376,7 @@ fn SectionKeyBindings(
                     }
                     KeyBindingConfigurationInput {
                         label: "Familiar essence",
+                        disabled: character_view().id.is_none(),
                         on_value: move |key_config: Option<KeyBindingConfiguration>| {
                             save_character(Character {
                                 familiar_essence_key: key_config.expect("not optional"),
@@ -383,6 +396,7 @@ fn SectionBuffs(character_view: Memo<Character>, save_character: Callback<Charac
     #[component]
     fn Buff(
         label: &'static str,
+        disabled: bool,
         on_value: EventHandler<KeyBindingConfiguration>,
         value: KeyBindingConfiguration,
     ) -> Element {
@@ -390,6 +404,7 @@ fn SectionBuffs(character_view: Memo<Character>, save_character: Callback<Charac
             div { class: "grid grid-cols-[140px_auto] gap-2",
                 KeyBindingConfigurationInput {
                     label,
+                    disabled,
                     on_value: move |config: Option<KeyBindingConfiguration>| {
                         on_value(config.expect("not optional"));
                     },
@@ -397,6 +412,7 @@ fn SectionBuffs(character_view: Memo<Character>, save_character: Callback<Charac
                 }
                 Checkbox {
                     label: "Enabled",
+                    disabled,
                     on_value: move |enabled| {
                         on_value(KeyBindingConfiguration {
                             enabled,
@@ -415,6 +431,7 @@ fn SectionBuffs(character_view: Memo<Character>, save_character: Callback<Charac
             div { class: "grid grid-cols-2 gap-4",
                 Buff {
                     label: "Sayram's Elixir",
+                    disabled: character_view().id.is_none(),
                     on_value: move |sayram_elixir_key| {
                         save_character(Character {
                             sayram_elixir_key,
@@ -425,6 +442,7 @@ fn SectionBuffs(character_view: Memo<Character>, save_character: Callback<Charac
                 }
                 Buff {
                     label: "Aurelia's Elixir",
+                    disabled: character_view().id.is_none(),
                     on_value: move |aurelia_elixir_key| {
                         save_character(Character {
                             aurelia_elixir_key,
@@ -435,6 +453,7 @@ fn SectionBuffs(character_view: Memo<Character>, save_character: Callback<Charac
                 }
                 Buff {
                     label: "3x EXP Coupon",
+                    disabled: character_view().id.is_none(),
                     on_value: move |exp_x3_key| {
                         save_character(Character {
                             exp_x3_key,
@@ -445,6 +464,7 @@ fn SectionBuffs(character_view: Memo<Character>, save_character: Callback<Charac
                 }
                 Buff {
                     label: "50% Bonus EXP Coupon",
+                    disabled: character_view().id.is_none(),
                     on_value: move |bonus_exp_key| {
                         save_character(Character {
                             bonus_exp_key,
@@ -455,6 +475,7 @@ fn SectionBuffs(character_view: Memo<Character>, save_character: Callback<Charac
                 }
                 Buff {
                     label: "Legion's Wealth",
+                    disabled: character_view().id.is_none(),
                     on_value: move |legion_wealth_key| {
                         save_character(Character {
                             legion_wealth_key,
@@ -465,6 +486,7 @@ fn SectionBuffs(character_view: Memo<Character>, save_character: Callback<Charac
                 }
                 Buff {
                     label: "Legion's Luck",
+                    disabled: character_view().id.is_none(),
                     on_value: move |legion_luck_key| {
                         save_character(Character {
                             legion_luck_key,
@@ -475,6 +497,7 @@ fn SectionBuffs(character_view: Memo<Character>, save_character: Callback<Charac
                 }
                 Buff {
                     label: "Wealth Acquisition Potion",
+                    disabled: character_view().id.is_none(),
                     on_value: move |wealth_acquisition_potion_key| {
                         save_character(Character {
                             wealth_acquisition_potion_key,
@@ -485,6 +508,7 @@ fn SectionBuffs(character_view: Memo<Character>, save_character: Callback<Charac
                 }
                 Buff {
                     label: "EXP Accumulation Potion",
+                    disabled: character_view().id.is_none(),
                     on_value: move |exp_accumulation_potion_key| {
                         save_character(Character {
                             exp_accumulation_potion_key,
@@ -495,6 +519,7 @@ fn SectionBuffs(character_view: Memo<Character>, save_character: Callback<Charac
                 }
                 Buff {
                     label: "Extreme Red Potion",
+                    disabled: character_view().id.is_none(),
                     on_value: move |extreme_red_potion_key| {
                         save_character(Character {
                             extreme_red_potion_key,
@@ -505,6 +530,7 @@ fn SectionBuffs(character_view: Memo<Character>, save_character: Callback<Charac
                 }
                 Buff {
                     label: "Extreme Blue Potion",
+                    disabled: character_view().id.is_none(),
                     on_value: move |extreme_blue_potion_key| {
                         save_character(Character {
                             extreme_blue_potion_key,
@@ -515,6 +541,7 @@ fn SectionBuffs(character_view: Memo<Character>, save_character: Callback<Charac
                 }
                 Buff {
                     label: "Extreme Green Potion",
+                    disabled: character_view().id.is_none(),
                     on_value: move |extreme_green_potion_key| {
                         save_character(Character {
                             extreme_green_potion_key,
@@ -525,6 +552,7 @@ fn SectionBuffs(character_view: Memo<Character>, save_character: Callback<Charac
                 }
                 Buff {
                     label: "Extreme Gold Potion",
+                    disabled: character_view().id.is_none(),
                     on_value: move |extreme_gold_potion_key| {
                         save_character(Character {
                             extreme_gold_potion_key,
@@ -549,6 +577,7 @@ fn SectionFixedActions(
     rsx! {
         Section { name: "Fixed actions",
             ActionConfigurationList {
+                disabled: character_view().id.is_none(),
                 on_add_click: move |_| {
                     action_input_kind
                         .set(
@@ -579,6 +608,7 @@ fn SectionOthers(character_view: Memo<Character>, save_character: Callback<Chara
             div { class: "grid grid-cols-2 gap-4",
                 CharactersMillisInput {
                     label: "Feed pet every milliseconds",
+                    disabled: character_view().id.is_none(),
                     on_value: move |feed_pet_millis| {
                         save_character(Character {
                             feed_pet_millis,
@@ -591,6 +621,7 @@ fn SectionOthers(character_view: Memo<Character>, save_character: Callback<Chara
 
                 CharactersSelect::<PotionMode> {
                     label: "Use potion mode",
+                    disabled: character_view().id.is_none(),
                     on_select: move |potion_mode| {
                         save_character(Character {
                             potion_mode,
@@ -603,6 +634,7 @@ fn SectionOthers(character_view: Memo<Character>, save_character: Callback<Chara
                     PotionMode::EveryMillis(millis) => rsx! {
                         CharactersMillisInput {
                             label: "Use potion every milliseconds",
+                            disabled: character_view().id.is_none(),
                             on_value: move |millis| {
                                 save_character(Character {
                                     potion_mode: PotionMode::EveryMillis(millis),
@@ -615,6 +647,7 @@ fn SectionOthers(character_view: Memo<Character>, save_character: Callback<Chara
                     PotionMode::Percentage(percent) => rsx! {
                         CharactersPercentageInput {
                             label: "Use potion health below percentage",
+                            disabled: character_view().id.is_none(),
                             on_value: move |percent| {
                                 save_character(Character {
                                     potion_mode: PotionMode::Percentage(percent),
@@ -628,6 +661,7 @@ fn SectionOthers(character_view: Memo<Character>, save_character: Callback<Chara
 
                 CharactersSelect::<Class> {
                     label: "Link key timing class",
+                    disabled: character_view().id.is_none(),
                     on_select: move |class| {
                         save_character(Character {
                             class,
@@ -638,6 +672,7 @@ fn SectionOthers(character_view: Memo<Character>, save_character: Callback<Chara
                 }
                 CharactersCheckbox {
                     label: "Disable walking",
+                    disabled: character_view().id.is_none(),
                     on_value: move |disable_adjusting| {
                         save_character(Character {
                             disable_adjusting,
@@ -655,6 +690,7 @@ fn SectionOthers(character_view: Memo<Character>, save_character: Callback<Chara
 fn KeyBindingConfigurationInput(
     label: &'static str,
     #[props(default = false)] optional: bool,
+    disabled: bool,
     on_value: EventHandler<Option<KeyBindingConfiguration>>,
     value: Option<KeyBindingConfiguration>,
 ) -> Element {
@@ -668,6 +704,7 @@ fn KeyBindingConfigurationInput(
         KeyBindingInput {
             label,
             optional,
+            disabled,
             on_value: move |new_value: Option<KeyBinding>| {
                 let new_value = new_value
                     .map(|key| {
@@ -686,6 +723,7 @@ fn KeyBindingConfigurationInput(
 fn CharactersCheckbox(
     label: &'static str,
     #[props(default = String::default())] label_class: String,
+    #[props(default = false)] disabled: bool,
     on_value: EventHandler<bool>,
     value: bool,
 ) -> Element {
@@ -694,6 +732,7 @@ fn CharactersCheckbox(
             label,
             label_class,
             input_class: "w-6",
+            disabled,
             on_value,
             value,
         }
@@ -720,6 +759,7 @@ fn CharactersSelect<T: 'static + Clone + PartialEq + Display + IntoEnumIterator>
 #[component]
 fn CharactersPercentageInput(
     label: &'static str,
+    disabled: bool,
     on_value: EventHandler<f32>,
     value: f32,
 ) -> Element {
@@ -991,6 +1031,7 @@ fn ActionConfigurationInput(
 
 #[component]
 fn ActionConfigurationList(
+    disabled: bool,
     on_add_click: EventHandler,
     on_item_click: EventHandler<(ActionConfiguration, usize)>,
     on_item_delete: EventHandler<usize>,
@@ -1056,6 +1097,7 @@ fn ActionConfigurationList(
             Button {
                 text: "Add action",
                 kind: ButtonKind::Secondary,
+                disabled,
                 on_click: move |_| {
                     on_add_click(());
                 },

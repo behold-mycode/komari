@@ -450,7 +450,7 @@ pub fn Actions() -> Element {
                 class: "flex-grow",
                 options: minimap_presets(),
                 disabled: minimap().is_none(),
-                placeholder: "Create an actions preset...",
+                placeholder: "Create an actions preset for the selected map...",
                 on_create: move |name| {
                     coroutine.send(ActionUpdate::CreatePreset(name));
                     coroutine.send(ActionUpdate::SetPreset);
