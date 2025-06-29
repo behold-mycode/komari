@@ -7,7 +7,7 @@ use anyhow::Result;
 use strum::EnumIter;
 
 use crate::{
-    Configuration, Settings,
+    Character, Settings,
     context::{Context, Contextual, ControlFlow},
     player::Player,
     task::{Task, Update, update_detection_task},
@@ -58,22 +58,22 @@ impl BuffState {
     }
 
     /// Updates the enabled states of each buff to only detect if enabled.
-    pub fn update_enabled_state(&mut self, config: &Configuration, settings: &Settings) {
+    pub fn update_enabled_state(&mut self, character: &Character, settings: &Settings) {
         self.enabled = match self.kind {
             BuffKind::Rune => settings.enable_rune_solving,
-            BuffKind::Familiar => config.familiar_buff_key.enabled,
-            BuffKind::SayramElixir => config.sayram_elixir_key.enabled,
-            BuffKind::AureliaElixir => config.aurelia_elixir_key.enabled,
-            BuffKind::ExpCouponX3 => config.exp_x3_key.enabled,
-            BuffKind::BonusExpCoupon => config.bonus_exp_key.enabled,
-            BuffKind::LegionWealth => config.legion_wealth_key.enabled,
-            BuffKind::LegionLuck => config.legion_luck_key.enabled,
-            BuffKind::WealthAcquisitionPotion => config.wealth_acquisition_potion_key.enabled,
-            BuffKind::ExpAccumulationPotion => config.exp_accumulation_potion_key.enabled,
-            BuffKind::ExtremeRedPotion => config.extreme_red_potion_key.enabled,
-            BuffKind::ExtremeBluePotion => config.extreme_blue_potion_key.enabled,
-            BuffKind::ExtremeGreenPotion => config.extreme_green_potion_key.enabled,
-            BuffKind::ExtremeGoldPotion => config.extreme_gold_potion_key.enabled,
+            BuffKind::Familiar => character.familiar_buff_key.enabled,
+            BuffKind::SayramElixir => character.sayram_elixir_key.enabled,
+            BuffKind::AureliaElixir => character.aurelia_elixir_key.enabled,
+            BuffKind::ExpCouponX3 => character.exp_x3_key.enabled,
+            BuffKind::BonusExpCoupon => character.bonus_exp_key.enabled,
+            BuffKind::LegionWealth => character.legion_wealth_key.enabled,
+            BuffKind::LegionLuck => character.legion_luck_key.enabled,
+            BuffKind::WealthAcquisitionPotion => character.wealth_acquisition_potion_key.enabled,
+            BuffKind::ExpAccumulationPotion => character.exp_accumulation_potion_key.enabled,
+            BuffKind::ExtremeRedPotion => character.extreme_red_potion_key.enabled,
+            BuffKind::ExtremeBluePotion => character.extreme_blue_potion_key.enabled,
+            BuffKind::ExtremeGreenPotion => character.extreme_green_potion_key.enabled,
+            BuffKind::ExtremeGoldPotion => character.extreme_gold_potion_key.enabled,
         };
         if !self.enabled {
             self.fail_count = 0;
@@ -281,7 +281,7 @@ mod tests {
         state.fail_count = 5;
 
         let mut settings = Settings::default();
-        let config = Configuration::default();
+        let config = Character::default();
         settings.enable_rune_solving = false;
 
         state.update_enabled_state(&config, &settings);
