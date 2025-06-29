@@ -635,6 +635,21 @@ fn SectionOthers(character_view: Memo<Character>, save_character: Callback<Chara
                     value: character_view().feed_pet_millis,
                 }
                 CharactersCheckbox {
+                    label: "Feed pet",
+                    disabled: character_view().id.is_none(),
+                    on_value: move |enabled| {
+                        let character = character_view.peek().clone();
+                        save_character(Character {
+                            feed_pet_key: KeyBindingConfiguration {
+                                enabled,
+                                ..character.feed_pet_key
+                            },
+                            ..character
+                        });
+                    },
+                    value: character_view().feed_pet_key.enabled,
+                }
+                CharactersCheckbox {
                     label: "Use potion",
                     disabled: character_view().id.is_none(),
                     on_value: move |enabled| {
@@ -649,7 +664,6 @@ fn SectionOthers(character_view: Memo<Character>, save_character: Callback<Chara
                     },
                     value: character_view().potion_key.enabled,
                 }
-                div {} // Spacer
                 CharactersSelect::<PotionMode> {
                     label: "Potion mode",
                     disabled: character_view().id.is_none(),
