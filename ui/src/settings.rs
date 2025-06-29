@@ -196,7 +196,7 @@ fn SectionFamiliars(
                 },
                 value: familiars_view().enable_familiars_swapping,
             }
-            div { class: "grid grid-cols-2 gap-3",
+            div { class: "grid grid-cols-2 gap-3 mt-2",
                 SettingsEnumSelect::<SwappableFamiliars> {
                     label: "Swappable slots",
                     disabled: !familiars_view().enable_familiars_swapping,
