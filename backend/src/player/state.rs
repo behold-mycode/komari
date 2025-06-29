@@ -1062,7 +1062,7 @@ impl PlayerState {
                     let _ = context.keys.send_mouse(x, y, MouseAction::Click);
                 }
                 Update::Err(_) => {
-                    let _ = context.keys.send_mouse(50, 50, MouseAction::Move);
+                    let _ = context.keys.send_mouse(300, 100, MouseAction::Move);
                 }
                 Update::Pending => (),
             }
