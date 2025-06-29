@@ -601,7 +601,7 @@ fn update_saving(
     /// Timeout for saving familiars setup.
     const SAVING_TIMEOUT: u32 = 30;
     const PRESS_OK_AT: u32 = 15;
-    const PRESS_ESC_AT: u32 = 25;
+    const PRESS_ESC_AT: u32 = 20;
 
     update_with_timeout(
         timeout,
@@ -632,17 +632,10 @@ fn update_saving(
                     if let Ok(button) = context.detector_unwrap().detect_esc_confirm_button() {
                         let (x, y) = bbox_click_point(button);
                         let _ = context.keys.send_mouse(x, y, MouseAction::Click);
-                        let _ = context.keys.send_mouse(
-                            swapping.mouse_rest.x,
-                            swapping.mouse_rest.y,
-                            MouseAction::Move,
-                        );
                     }
                 }
                 PRESS_ESC_AT => {
-                    if context.detector_unwrap().detect_familiar_menu_opened() {
-                        let _ = context.keys.send(KeyKind::Esc);
-                    }
+                    let _ = context.keys.send(KeyKind::Esc);
                 }
                 _ => (),
             }
@@ -922,7 +915,7 @@ mod tests {
     fn update_saving_press_ok_button() {
         let mut keys = MockKeySender::default();
         keys.expect_send_mouse()
-            .times(2) // one for OK button click, one for mouse move
+            .times(1) // one for OK button click
             .returning(|_, _, _| Ok(()));
         keys.expect_send().once().returning(|_| Ok(()));
 
@@ -937,6 +930,15 @@ mod tests {
 
         let timeout = Timeout {
             current: 14, // PRESS_OK_AT
+            started: true,
+            ..Default::default()
+        };
+
+        let result = update_saving(&context, swapping, timeout, 0);
+        assert_matches!(result.stage, SwappingStage::Saving(_, 0));
+
+        let timeout = Timeout {
+            current: 19, // PRESS_ESC_AT
             started: true,
             ..Default::default()
         };
