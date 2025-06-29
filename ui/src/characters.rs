@@ -624,7 +624,7 @@ fn SectionOthers(character_view: Memo<Character>, save_character: Callback<Chara
         Section { name: "Others",
             div { class: "grid grid-cols-3 gap-4",
                 CharactersMillisInput {
-                    label: "Feed pet every milliseconds",
+                    label: "Feed pet every",
                     disabled: character_view().id.is_none(),
                     on_value: move |feed_pet_millis| {
                         save_character(Character {
@@ -634,7 +634,22 @@ fn SectionOthers(character_view: Memo<Character>, save_character: Callback<Chara
                     },
                     value: character_view().feed_pet_millis,
                 }
-                div { class: "col-span-2" } // Spacer
+                CharactersCheckbox {
+                    label: "Use potion",
+                    disabled: character_view().id.is_none(),
+                    on_value: move |enabled| {
+                        let character = character_view.peek().clone();
+                        save_character(Character {
+                            potion_key: KeyBindingConfiguration {
+                                enabled,
+                                ..character.potion_key
+                            },
+                            ..character
+                        });
+                    },
+                    value: character_view().potion_key.enabled,
+                }
+                div {} // Spacer
                 CharactersSelect::<PotionMode> {
                     label: "Potion mode",
                     disabled: character_view().id.is_none(),
@@ -659,6 +674,7 @@ fn SectionOthers(character_view: Memo<Character>, save_character: Callback<Chara
                             },
                             value: millis,
                         }
+                        div {}
                     },
                     PotionMode::Percentage(percent) => rsx! {
                         CharactersPercentageInput {
@@ -672,22 +688,18 @@ fn SectionOthers(character_view: Memo<Character>, save_character: Callback<Chara
                             },
                             value: percent,
                         }
-                    },
-                }
-                CharactersCheckbox {
-                    label: "Use potion",
-                    disabled: character_view().id.is_none(),
-                    on_value: move |enabled| {
-                        let character = character_view.peek().clone();
-                        save_character(Character {
-                            potion_key: KeyBindingConfiguration {
-                                enabled,
-                                ..character.potion_key
+                        CharactersMillisInput {
+                            label: "Health update every",
+                            disabled: character_view().id.is_none(),
+                            on_value: move |millis| {
+                                save_character(Character {
+                                    health_update_millis: millis,
+                                    ..character_view.peek().clone()
+                                });
                             },
-                            ..character
-                        });
+                            value: character_view().health_update_millis,
+                        }
                     },
-                    value: character_view().potion_key.enabled,
                 }
 
                 CharactersSelect::<Class> {
