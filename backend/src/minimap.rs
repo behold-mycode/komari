@@ -26,9 +26,9 @@ pub struct MinimapState {
     rune_task: Option<Task<Result<Point>>>,
     portals_task: Option<Task<Result<Vec<Rect>>>>,
     has_elite_boss_task: Option<Task<Result<bool>>>,
-    has_guildie_player_task: Option<Task<Result<bool>>>,
-    has_stranger_player_task: Option<Task<Result<bool>>>,
-    has_friend_player_task: Option<Task<Result<bool>>>,
+    has_guildie_player_task: Option<Task<Result<()>>>,
+    has_stranger_player_task: Option<Task<Result<()>>>,
+    has_friend_player_task: Option<Task<Result<()>>>,
     update_platforms: bool,
 }
 
@@ -98,11 +98,11 @@ pub struct MinimapIdle {
     /// This does not belong to minimap though...
     pub has_elite_boss: bool,
     /// Whether there is a guildie.
-    has_guildie_player: Threshold<bool>,
+    has_guildie_player: Threshold<()>,
     /// Whether there is a stranger.
-    has_stranger_player: Threshold<bool>,
+    has_stranger_player: Threshold<()>,
     /// Whether there is a friend.
-    has_friend_player: Threshold<bool>,
+    has_friend_player: Threshold<()>,
     /// The portal positions.
     ///
     /// Praying each night that there won't be more than 16 portals...
@@ -116,9 +116,9 @@ pub struct MinimapIdle {
 
 impl MinimapIdle {
     pub fn has_any_other_player(&self) -> bool {
-        self.has_guildie_player.value.unwrap_or_default()
-            || self.has_stranger_player.value.unwrap_or_default()
-            || self.has_friend_player.value.unwrap_or_default()
+        self.has_guildie_player.value.is_some()
+            || self.has_stranger_player.value.is_some()
+            || self.has_friend_player.value.is_some()
     }
 }
 
@@ -169,7 +169,11 @@ fn update_detecting_context(context: &Context, state: &mut MinimapState) -> Mini
         .unwrap_or_default();
     state.update_platforms = false;
     state.rune_task = None;
+    state.portals_task = None;
     state.has_elite_boss_task = None;
+    state.has_guildie_player_task = None;
+    state.has_stranger_player_task = None;
+    state.has_friend_player_task = None;
 
     Minimap::Idle(MinimapIdle {
         anchors,
@@ -334,16 +338,20 @@ fn update_elite_boss_task(
 #[inline]
 fn update_other_player_task(
     context: &Context,
-    task: &mut Option<Task<Result<bool>>>,
+    task: &mut Option<Task<Result<()>>>,
     minimap: Rect,
-    threshold: Threshold<bool>,
+    threshold: Threshold<()>,
     kind: OtherPlayerKind,
-) -> Threshold<bool> {
-    let has_player = threshold.value.unwrap_or_default();
+) -> Threshold<()> {
+    let has_player = threshold.value.is_some();
     let threshold = update_threshold_detection(context, 3000, threshold, task, move |detector| {
-        Ok(detector.detect_player_kind(minimap, kind))
+        if detector.detect_player_kind(minimap, kind) {
+            Ok(())
+        } else {
+            Err(anyhow!("player not found"))
+        }
     });
-    if !context.halting && !has_player && threshold.value.unwrap_or_default() {
+    if !context.halting && !has_player && threshold.value.is_some() {
         let notification = match kind {
             OtherPlayerKind::Guildie => NotificationKind::PlayerGuildieAppear,
             OtherPlayerKind::Stranger => NotificationKind::PlayerStrangerAppear,
