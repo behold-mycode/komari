@@ -601,6 +601,7 @@ fn update_saving(
     /// Timeout for saving familiars setup.
     const SAVING_TIMEOUT: u32 = 30;
     const PRESS_OK_AT: u32 = 15;
+    const PRESS_ESC_AT: u32 = 25;
 
     update_with_timeout(
         timeout,
@@ -626,17 +627,24 @@ fn update_saving(
             }
         },
         |timeout| {
-            if timeout.current == PRESS_OK_AT
-                && let Ok(button) = context.detector_unwrap().detect_esc_confirm_button()
-            {
-                let (x, y) = bbox_click_point(button);
-                let _ = context.keys.send_mouse(x, y, MouseAction::Click);
-                let _ = context.keys.send_mouse(
-                    swapping.mouse_rest.x,
-                    swapping.mouse_rest.y,
-                    MouseAction::Move,
-                );
-                let _ = context.keys.send(KeyKind::Esc);
+            match timeout.current {
+                PRESS_OK_AT => {
+                    if let Ok(button) = context.detector_unwrap().detect_esc_confirm_button() {
+                        let (x, y) = bbox_click_point(button);
+                        let _ = context.keys.send_mouse(x, y, MouseAction::Click);
+                        let _ = context.keys.send_mouse(
+                            swapping.mouse_rest.x,
+                            swapping.mouse_rest.y,
+                            MouseAction::Move,
+                        );
+                    }
+                }
+                PRESS_ESC_AT => {
+                    if context.detector_unwrap().detect_familiar_menu_opened() {
+                        let _ = context.keys.send(KeyKind::Esc);
+                    }
+                }
+                _ => (),
             }
             swapping.stage_saving(timeout, retry_count)
         },
