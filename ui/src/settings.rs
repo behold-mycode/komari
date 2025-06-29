@@ -110,12 +110,13 @@ fn SectionCapture(
                     on_select: move |(index, _)| async move {
                         if index == 0 {
                             selected_handle_index.set(None);
+                            select_capture_handle(None).await;
                         } else {
                             selected_handle_index.set(Some(index - 1));
                             select_capture_handle(Some(index - 1)).await;
                         }
                     },
-                    selected: selected_handle_index().unwrap_or_default(),
+                    selected: selected_handle_index().map(|index| index + 1).unwrap_or_default(),
                 }
                 SettingsEnumSelect::<CaptureMode> {
                     label: "Mode",

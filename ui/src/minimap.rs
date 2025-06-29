@@ -405,48 +405,46 @@ fn Canvas(
         });
     });
     // Draw minimap and update game state
-    use_effect(move || {
-        spawn(async move {
-            let mut canvas = document::eval(MINIMAP_JS);
-            let mut receiver = game_state_receiver().await;
-            loop {
-                let Ok(current_state) = receiver.recv().await else {
-                    continue;
-                };
-                let destinations = current_state.destinations;
-                let bound = current_state.platforms_bound;
-                let frame = current_state.frame;
-                let current_state = MinimapState {
-                    position: current_state.position,
-                    health: current_state.health,
-                    state: current_state.state,
-                    normal_action: current_state.normal_action,
-                    priority_action: current_state.priority_action,
-                    erda_shower_state: current_state.erda_shower_state,
-                    halting: current_state.halting,
-                    detected_size: frame.as_ref().map(|(_, width, height)| (*width, *height)),
-                };
+    use_future(move || async move {
+        let mut canvas = document::eval(MINIMAP_JS);
+        let mut receiver = game_state_receiver().await;
+        loop {
+            let Ok(current_state) = receiver.recv().await else {
+                continue;
+            };
+            let destinations = current_state.destinations;
+            let bound = current_state.platforms_bound;
+            let frame = current_state.frame;
+            let current_state = MinimapState {
+                position: current_state.position,
+                health: current_state.health,
+                state: current_state.state,
+                normal_action: current_state.normal_action,
+                priority_action: current_state.priority_action,
+                erda_shower_state: current_state.erda_shower_state,
+                halting: current_state.halting,
+                detected_size: frame.as_ref().map(|(_, width, height)| (*width, *height)),
+            };
 
-                if *platforms_bound.peek() != bound {
-                    platforms_bound.set(bound);
-                }
-                if *position.peek() != current_state.position.unwrap_or_default() {
-                    position.set(current_state.position.unwrap_or_default());
-                }
-                state.set(Some(current_state));
-
-                let Some((frame, width, height)) = frame else {
-                    continue;
-                };
-                let Err(error) = canvas.send((frame, width, height, destinations)) else {
-                    continue;
-                };
-                if matches!(error, EvalError::Finished) {
-                    // probably: https://github.com/DioxusLabs/dioxus/issues/2979
-                    canvas = document::eval(MINIMAP_JS);
-                }
+            if *platforms_bound.peek() != bound {
+                platforms_bound.set(bound);
             }
-        });
+            if *position.peek() != current_state.position.unwrap_or_default() {
+                position.set(current_state.position.unwrap_or_default());
+            }
+            state.set(Some(current_state));
+
+            let Some((frame, width, height)) = frame else {
+                continue;
+            };
+            let Err(error) = canvas.send((frame, width, height, destinations)) else {
+                continue;
+            };
+            if matches!(error, EvalError::Finished) {
+                // probably: https://github.com/DioxusLabs/dioxus/issues/2979
+                canvas = document::eval(MINIMAP_JS);
+            }
+        }
     });
 
     rsx! {
