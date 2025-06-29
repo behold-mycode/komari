@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use backend::{
     Action, ActionKey, ActionMove, AutoMobbing, Minimap as MinimapData, PingPong, Position,
     RotationMode, create_minimap, delete_map, game_state_receiver, query_maps, redetect_minimap,
@@ -6,7 +8,7 @@ use backend::{
 use dioxus::{document::EvalError, prelude::*};
 use futures_util::StreamExt;
 use serde::Serialize;
-use tokio::task::spawn_blocking;
+use tokio::{task::spawn_blocking, time::sleep};
 
 use crate::{
     AppState,
@@ -433,6 +435,7 @@ fn Canvas(
                 position.set(current_state.position.unwrap_or_default());
             }
             state.set(Some(current_state));
+            sleep(Duration::from_millis(50)).await;
 
             let Some((frame, width, height)) = frame else {
                 continue;
