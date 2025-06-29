@@ -313,7 +313,7 @@ pub fn Minimap() -> Element {
                 minimap_preset,
                 position,
             }
-            Buttons { state }
+            Buttons { state, minimap }
             Info { state, minimap }
             div { class: "px-2",
                 div { class: "h-10 w-full flex items-center",
@@ -355,22 +355,23 @@ fn Canvas(
     minimap_preset: ReadOnlySignal<Option<String>>,
     position: Signal<(i32, i32)>,
 ) -> Element {
+    let mut platforms_bound = use_signal(|| None);
+
     use_effect(move || {
+        let platforms_bound = platforms_bound();
+        let preset = minimap_preset();
         let Some(minimap) = minimap() else {
-            return;
-        };
-        let Some(preset) = minimap_preset() else {
             return;
         };
         let bound_and_type = match minimap.rotation_mode {
             RotationMode::StartToEnd | RotationMode::StartToEndThenReverse => None,
-            RotationMode::AutoMobbing(AutoMobbing { bound, .. }) => Some((bound, "AutoMobbing")),
+            RotationMode::AutoMobbing(AutoMobbing { bound, .. }) => {
+                Some((platforms_bound.unwrap_or(bound), "AutoMobbing"))
+            }
             RotationMode::PingPong(PingPong { bound, .. }) => Some((bound, "PingPong")),
         };
-        let actions = minimap
-            .actions
-            .get(&preset)
-            .cloned()
+        let actions = preset
+            .and_then(|preset| minimap.actions.get(&preset).cloned())
             .unwrap_or_default()
             .into_iter()
             .filter_map(|action| match action {
@@ -413,6 +414,7 @@ fn Canvas(
                     continue;
                 };
                 let destinations = current_state.destinations;
+                let bound = current_state.platforms_bound;
                 let frame = current_state.frame;
                 let current_state = MinimapState {
                     position: current_state.position,
@@ -425,6 +427,9 @@ fn Canvas(
                     detected_size: frame.as_ref().map(|(_, width, height)| (*width, *height)),
                 };
 
+                if *platforms_bound.peek() != bound {
+                    platforms_bound.set(bound);
+                }
                 if *position.peek() != current_state.position.unwrap_or_default() {
                     position.set(current_state.position.unwrap_or_default());
                 }
@@ -537,8 +542,12 @@ fn InfoItem(name: String, value: String) -> Element {
 }
 
 #[component]
-fn Buttons(state: ReadOnlySignal<Option<MinimapState>>) -> Element {
+fn Buttons(
+    state: ReadOnlySignal<Option<MinimapState>>,
+    minimap: ReadOnlySignal<Option<MinimapData>>,
+) -> Element {
     let halting = use_memo(move || state().map(|state| state.halting).unwrap_or_default());
+    let character = use_context::<AppState>().character;
 
     rsx! {
         div { class: "flex h-10 justify-center items-center gap-4",
@@ -546,6 +555,7 @@ fn Buttons(state: ReadOnlySignal<Option<MinimapState>>) -> Element {
                 class: "w-20",
                 text: if halting() { "Start" } else { "Stop" },
                 kind: ButtonKind::Primary,
+                disabled: minimap().is_none() || character().is_none(),
                 on_click: move || async move {
                     rotate_actions(!*halting.peek()).await;
                 },

@@ -46,7 +46,7 @@ static GAME_STATE: LazyLock<broadcast::Sender<GameState>> =
 
 pub struct DefaultRequestHandler<'a> {
     pub context: &'a mut Context,
-    pub character: &'a mut Character,
+    pub character: &'a mut Option<Character>,
     pub settings: &'a mut Settings,
     pub buffs: &'a mut Vec<(BuffKind, KeyBinding)>,
     pub buff_states: &'a mut Vec<BuffState>,
@@ -94,6 +94,16 @@ impl DefaultRequestHandler<'_> {
                 .as_ref()
                 .map(|detector| detector.mat())
                 .and_then(|mat| extract_minimap(self.context, mat)),
+            platforms_bound: if self
+                .minimap
+                .data()
+                .is_some_and(|data| data.auto_mob_platforms_bound)
+                && let Minimap::Idle(idle) = self.context.minimap
+            {
+                idle.platforms_bound.map(|bound| bound.into())
+            } else {
+                None
+            },
         };
         let _ = GAME_STATE.send(game_state);
     }
@@ -141,6 +151,9 @@ impl DefaultRequestHandler<'_> {
     }
 
     fn update_rotator_actions(&mut self) {
+        let Some(character) = self.character else {
+            return;
+        };
         let mode = self
             .minimap
             .data()
@@ -152,7 +165,7 @@ impl DefaultRequestHandler<'_> {
             .data()
             .map(|minimap| minimap.actions_any_reset_on_erda_condition)
             .unwrap_or_default();
-        let actions = config_actions(self.character)
+        let actions = config_actions(character)
             .into_iter()
             .chain(self.actions.iter().copied())
             .collect::<Vec<_>>();
@@ -160,7 +173,7 @@ impl DefaultRequestHandler<'_> {
             mode,
             actions: actions.as_slice(),
             buffs: self.buffs,
-            familiar_essence_key: self.character.familiar_essence_key.key,
+            familiar_essence_key: character.familiar_essence_key.key,
             familiar_swappable_slots: self.settings.familiars.swappable_familiars,
             familiar_swappable_rarities: &self.settings.familiars.swappable_rarities,
             familiar_swap_check_millis: self.settings.familiars.swap_check_millis,
@@ -180,7 +193,7 @@ impl DefaultRequestHandler<'_> {
 
 impl RequestHandler for DefaultRequestHandler<'_> {
     fn on_rotate_actions(&mut self, halting: bool) {
-        if self.minimap.data().is_some() {
+        if self.minimap.data().is_some() && self.character.is_some() {
             self.context.halting = halting;
             if halting {
                 self.rotator.reset_queue();
@@ -221,31 +234,33 @@ impl RequestHandler for DefaultRequestHandler<'_> {
     }
 
     fn on_update_character(&mut self, character: Character) {
-        *self.character = character;
-        *self.buffs = config_buffs(self.character);
-        self.player.reset();
-        self.player.config.class = self.character.class;
-        self.player.config.disable_adjusting = self.character.disable_adjusting;
-        self.player.config.interact_key = self.character.interact_key.key.into();
-        self.player.config.grappling_key = self.character.ropelift_key.map(|key| key.key.into());
-        self.player.config.teleport_key = self.character.teleport_key.map(|key| key.key.into());
-        self.player.config.jump_key = self.character.jump_key.key.into();
-        self.player.config.upjump_key = self.character.up_jump_key.map(|key| key.key.into());
-        self.player.config.cash_shop_key = self.character.cash_shop_key.key.into();
-        self.player.config.familiar_key = self.character.familiar_menu_key.key.into();
-        self.player.config.maple_guide_key = self.character.maple_guide_key.key.into();
-        self.player.config.change_channel_key = self.character.change_channel_key.key.into();
-        self.player.config.potion_key = self.character.potion_key.key.into();
-        self.player.config.use_potion_below_percent = match (
-            self.character.potion_key.enabled,
-            self.character.potion_mode,
-        ) {
-            (false, _) | (_, PotionMode::EveryMillis(_)) => None,
-            (_, PotionMode::Percentage(percent)) => Some(percent / 100.0),
+        *self.character = Some(character);
+
+        let Some(character) = self.character else {
+            return;
         };
-        self.player.config.update_health_millis = Some(self.character.health_update_millis);
+        *self.buffs = config_buffs(character);
+        self.player.reset();
+        self.player.config.class = character.class;
+        self.player.config.disable_adjusting = character.disable_adjusting;
+        self.player.config.interact_key = character.interact_key.key.into();
+        self.player.config.grappling_key = character.ropelift_key.map(|key| key.key.into());
+        self.player.config.teleport_key = character.teleport_key.map(|key| key.key.into());
+        self.player.config.jump_key = character.jump_key.key.into();
+        self.player.config.upjump_key = character.up_jump_key.map(|key| key.key.into());
+        self.player.config.cash_shop_key = character.cash_shop_key.key.into();
+        self.player.config.familiar_key = character.familiar_menu_key.key.into();
+        self.player.config.maple_guide_key = character.maple_guide_key.key.into();
+        self.player.config.change_channel_key = character.change_channel_key.key.into();
+        self.player.config.potion_key = character.potion_key.key.into();
+        self.player.config.use_potion_below_percent =
+            match (character.potion_key.enabled, character.potion_mode) {
+                (false, _) | (_, PotionMode::EveryMillis(_)) => None,
+                (_, PotionMode::Percentage(percent)) => Some(percent / 100.0),
+            };
+        self.player.config.update_health_millis = Some(character.health_update_millis);
         self.buff_states.iter_mut().for_each(|state| {
-            state.update_enabled_state(self.character, self.settings);
+            state.update_enabled_state(character, self.settings);
         });
         self.update_rotator_actions();
     }
@@ -286,8 +301,12 @@ impl RequestHandler for DefaultRequestHandler<'_> {
         }
 
         *self.settings = settings;
+
+        let Some(character) = self.character else {
+            return;
+        };
         self.buff_states.iter_mut().for_each(|state| {
-            state.update_enabled_state(self.character, self.settings);
+            state.update_enabled_state(character, self.settings);
         });
         self.update_rotator_actions();
     }
@@ -463,7 +482,7 @@ fn extract_minimap(context: &Context, mat: &impl MatTraitConst) -> Option<(Vec<u
     None
 }
 
-pub fn config_buffs(character: &Character) -> Vec<(BuffKind, KeyBinding)> {
+fn config_buffs(character: &Character) -> Vec<(BuffKind, KeyBinding)> {
     BuffKind::iter()
         .filter_map(|kind| {
             let enabled_key = match kind {

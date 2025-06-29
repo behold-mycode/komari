@@ -179,6 +179,7 @@ pub struct GameState {
     pub destinations: Vec<(i32, i32)>,
     pub halting: bool,
     pub frame: Option<(Vec<u8>, usize, usize)>,
+    pub platforms_bound: Option<Bound>,
 }
 
 pub async fn rotate_actions(halting: bool) {

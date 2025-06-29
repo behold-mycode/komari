@@ -26,8 +26,8 @@ use crate::{
     minimap::{Minimap, MinimapState},
     network::{DiscordNotification, NotificationKind},
     player::{PanicTo, Panicking, Player, PlayerState},
-    query_characters, query_settings,
-    request_handler::{DefaultRequestHandler, config_buffs},
+    query_settings,
+    request_handler::DefaultRequestHandler,
     rng::Rng,
     rotator::Rotator,
     skill::{Skill, SkillKind, SkillState},
@@ -162,12 +162,8 @@ fn update_loop() {
     let handle = Handle::new("MapleStoryClass");
     let mut rotator = Rotator::default();
     let mut actions = Vec::<Action>::new();
-    let mut character = query_characters()
-        .unwrap()
-        .into_iter()
-        .next()
-        .unwrap_or_default(); // Override by UI
-    let mut buffs = config_buffs(&character);
+    let mut character = None; // Override by UI
+    let mut buffs = vec![];
     let settings = query_settings(); // Override by UI
     let seeds = query_seeds(); // Fixed, unchanged
     let rng = Rng::new(seeds.seed); // Create one for Context
@@ -220,9 +216,6 @@ fn update_loop() {
     let mut buff_states = BuffKind::iter()
         .map(BuffState::new)
         .collect::<Vec<BuffState>>();
-    buff_states.iter_mut().for_each(|state| {
-        state.update_enabled_state(&character, &settings.borrow());
-    });
 
     #[cfg(debug_assertions)]
     let mut recording_images_id = None;
