@@ -330,10 +330,8 @@ fn on_ping_pong_use_key_action(
     has_grappling: bool,
 ) -> Option<(Player, bool)> {
     let hit_x_bound_edge = match direction {
-        PingPongDirection::Left => (cur_pos.x - bound.x).abs() <= DOUBLE_JUMP_THRESHOLD,
-        PingPongDirection::Right => {
-            (cur_pos.x - bound.x - bound.width).abs() <= DOUBLE_JUMP_THRESHOLD
-        }
+        PingPongDirection::Left => cur_pos.x - bound.x <= 0,
+        PingPongDirection::Right => cur_pos.x - bound.x - bound.width >= 0,
     };
     if hit_x_bound_edge {
         return Some((Player::Idle, true));
