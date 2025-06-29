@@ -5,7 +5,7 @@
 use std::{env::current_exe, io::stdout, string::ToString, sync::LazyLock};
 
 use actions::Actions;
-use backend::{Configuration, Minimap as MinimapData, Settings as SettingsData};
+use backend::{Character, Minimap as MinimapData, Settings as SettingsData};
 use characters::Characters;
 use dioxus::{
     desktop::{
@@ -75,7 +75,7 @@ fn main() {
 pub struct AppState {
     minimap: Signal<Option<MinimapData>>,
     minimap_preset: Signal<Option<String>>,
-    config: Signal<Option<Configuration>>,
+    character: Signal<Option<Character>>,
     settings: Signal<Option<SettingsData>>,
     position: Signal<(i32, i32)>,
 }
@@ -99,7 +99,7 @@ fn App() -> Element {
     use_context_provider(|| AppState {
         minimap: Signal::new(None),
         minimap_preset: Signal::new(None),
-        config: Signal::new(None),
+        character: Signal::new(None),
         settings: Signal::new(None),
         position: Signal::new((0, 0)),
     });

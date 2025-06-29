@@ -38,11 +38,11 @@ pub use {
     context::init,
     database::{
         Action, ActionCondition, ActionConfiguration, ActionConfigurationCondition, ActionKey,
-        ActionKeyDirection, ActionKeyWith, ActionMove, AutoMobbing, Bound, CaptureMode, Class,
-        Configuration, FamiliarRarity, Familiars, InputMethod, KeyBinding, KeyBindingConfiguration,
+        ActionKeyDirection, ActionKeyWith, ActionMove, AutoMobbing, Bound, CaptureMode, Character,
+        Class, FamiliarRarity, Familiars, InputMethod, KeyBinding, KeyBindingConfiguration,
         LinkKeyBinding, Minimap, MobbingKey, Notifications, PanicMode, PingPong, Platform,
-        Position, PotionMode, RotationMode, Settings, SwappableFamiliars, delete_config,
-        delete_map, query_configs, query_maps, query_settings, upsert_config, upsert_map,
+        Position, PotionMode, RotationMode, Settings, SwappableFamiliars, delete_character,
+        delete_map, query_characters, query_maps, query_settings, upsert_character, upsert_map,
         upsert_settings,
     },
     pathing::MAX_PLATFORMS_COUNT,
@@ -84,7 +84,7 @@ enum Request {
     RotateActions(bool),
     CreateMinimap(String),
     UpdateMinimap(Option<String>, Minimap),
-    UpdateConfiguration(Configuration),
+    UpdateCharacter(Character),
     UpdateSettings(Settings),
     RedetectMinimap,
     GameStateReceiver,
@@ -112,7 +112,7 @@ enum Response {
     RotateActions,
     CreateMinimap(Option<Minimap>),
     UpdateMinimap,
-    UpdateConfiguration,
+    UpdateCharacter,
     UpdateSettings,
     RedetectMinimap,
     GameStateReceiver(broadcast::Receiver<GameState>),
@@ -138,7 +138,7 @@ pub(crate) trait RequestHandler {
 
     fn on_update_minimap(&mut self, preset: Option<String>, minimap: Minimap);
 
-    fn on_update_configuration(&mut self, config: Configuration);
+    fn on_update_character(&mut self, character: Character);
 
     fn on_update_settings(&mut self, settings: Settings);
 
@@ -202,10 +202,10 @@ pub async fn update_minimap(preset: Option<String>, minimap: Minimap) {
     )
 }
 
-pub async fn update_configuration(config: Configuration) {
+pub async fn update_character(character: Character) {
     expect_unit_variant!(
-        request(Request::UpdateConfiguration(config)).await,
-        Response::UpdateConfiguration
+        request(Request::UpdateCharacter(character)).await,
+        Response::UpdateCharacter
     )
 }
 
@@ -293,9 +293,9 @@ pub(crate) fn poll_request(handler: &mut dyn RequestHandler) {
                 handler.on_update_minimap(preset, minimap);
                 Response::UpdateMinimap
             }
-            Request::UpdateConfiguration(config) => {
-                handler.on_update_configuration(config);
-                Response::UpdateConfiguration
+            Request::UpdateCharacter(character) => {
+                handler.on_update_character(character);
+                Response::UpdateCharacter
             }
             Request::UpdateSettings(settings) => {
                 handler.on_update_settings(settings);

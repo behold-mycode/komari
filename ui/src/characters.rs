@@ -1,9 +1,9 @@
 use std::fmt::Display;
 
 use backend::{
-    ActionConfiguration, ActionConfigurationCondition, ActionKeyWith, Class, Configuration,
+    ActionConfiguration, ActionConfigurationCondition, ActionKeyWith, Character, Class,
     IntoEnumIterator, KeyBinding, KeyBindingConfiguration, LinkKeyBinding, PotionMode,
-    delete_config, query_configs, update_configuration, upsert_config,
+    delete_character, query_characters, update_character, upsert_character,
 };
 use dioxus::prelude::*;
 use futures_util::StreamExt;
@@ -18,7 +18,7 @@ use crate::{
 };
 
 #[derive(Debug)]
-enum ConfigurationUpdate {
+enum CharacterUpdate {
     Set,
     Save,
     Create(String),
@@ -37,175 +37,184 @@ enum ActionConfigurationInputKind {
 
 #[component]
 pub fn Characters() -> Element {
-    let mut config = use_context::<AppState>().config;
-    let mut configs = use_resource(move || async move {
-        spawn_blocking(|| query_configs().expect("failed to query configs"))
+    let mut character = use_context::<AppState>().character;
+    let mut characters = use_resource(move || async move {
+        spawn_blocking(|| query_characters().expect("failed to query characters"))
             .await
             .unwrap()
     });
-    // Maps queried `configs` to names
-    let config_names = use_memo(move || {
-        configs()
+    // Maps queried `characters` to names
+    let character_names = use_memo(move || {
+        characters()
             .unwrap_or_default()
             .into_iter()
-            .map(|config| config.name)
+            .map(|character| character.name)
             .collect()
     });
-    // Maps currently selected `config` to the index in `configs`
-    let config_index = use_memo(move || {
-        configs().zip(config()).and_then(|(configs, config)| {
-            configs
-                .into_iter()
-                .enumerate()
-                .find(|(_, cfg)| config.id == cfg.id)
-                .map(|(i, _)| i)
-        })
+    // Maps currently selected `character` to the index in `characters`
+    let character_index = use_memo(move || {
+        characters()
+            .zip(character())
+            .and_then(|(characters, character)| {
+                characters
+                    .into_iter()
+                    .enumerate()
+                    .find(|(_, cfg)| character.id == cfg.id)
+                    .map(|(i, _)| i)
+            })
     });
-    // Default config if `config` is `None`
-    let config_view = use_memo(move || config().unwrap_or_default());
+    // Default character if `character` is `None`
+    let character_view = use_memo(move || character().unwrap_or_default());
 
-    // Handles async operations for configuration-related
+    // Handles async operations for character-related
     let coroutine = use_coroutine(
-        move |mut rx: UnboundedReceiver<ConfigurationUpdate>| async move {
-            let mut save_config = async move |current_config: Configuration| {
-                let mut save_config = current_config.clone();
+        move |mut rx: UnboundedReceiver<CharacterUpdate>| async move {
+            let mut save_character = async move |current_character: Character| {
+                let mut save_character = current_character.clone();
                 spawn_blocking(move || {
-                    upsert_config(&mut save_config).expect("failed to upsert config actions");
+                    upsert_character(&mut save_character)
+                        .expect("failed to upsert character actions");
                 })
                 .await
                 .unwrap();
-                config.set(Some(current_config));
-                configs.restart();
+                character.set(Some(current_character));
+                characters.restart();
             };
 
             while let Some(message) = rx.next().await {
                 match message {
-                    ConfigurationUpdate::Set => {
-                        if let Some(config) = config() {
-                            update_configuration(config).await;
+                    CharacterUpdate::Set => {
+                        if let Some(character) = character() {
+                            update_character(character).await;
                         }
                     }
-                    ConfigurationUpdate::Save => {
-                        let Some(mut config) = config() else {
+                    CharacterUpdate::Save => {
+                        let Some(mut character) = character() else {
                             continue;
                         };
-                        debug_assert!(config.id.is_some(), "saving invalid config");
+                        debug_assert!(character.id.is_some(), "saving invalid character");
 
                         spawn_blocking(move || {
-                            upsert_config(&mut config).unwrap();
+                            upsert_character(&mut character).unwrap();
                         })
                         .await
                         .unwrap();
                     }
-                    ConfigurationUpdate::Create(name) => {
-                        let mut new_config = Configuration {
+                    CharacterUpdate::Create(name) => {
+                        let mut new_character = Character {
                             name,
-                            ..Configuration::default()
+                            ..Character::default()
                         };
-                        let mut save_config = new_config.clone();
+                        let mut save_character = new_character.clone();
                         let save_id = spawn_blocking(move || {
-                            upsert_config(&mut save_config).unwrap();
-                            save_config
+                            upsert_character(&mut save_character).unwrap();
+                            save_character
                                 .id
-                                .expect("config id must be valid after creation")
+                                .expect("character id must be valid after creation")
                         })
                         .await
                         .unwrap();
 
-                        new_config.id = Some(save_id);
-                        config.set(Some(new_config));
-                        configs.restart();
+                        new_character.id = Some(save_id);
+                        character.set(Some(new_character));
+                        characters.restart();
                     }
-                    ConfigurationUpdate::Delete => {
-                        if let Some(config) = config.take() {
+                    CharacterUpdate::Delete => {
+                        if let Some(character) = character.take() {
                             spawn_blocking(move || {
-                                delete_config(&config).expect("failed to delete config");
+                                delete_character(&character).expect("failed to delete character");
                             })
                             .await
                             .unwrap();
-                            configs.restart();
+                            characters.restart();
                         }
                     }
-                    ConfigurationUpdate::AddAction(action) => {
-                        let Some(mut config) = config() else {
+                    CharacterUpdate::AddAction(action) => {
+                        let Some(mut character) = character() else {
                             continue;
                         };
 
-                        config.actions.push(action);
-                        save_config(config).await;
+                        character.actions.push(action);
+                        save_character(character).await;
                     }
-                    ConfigurationUpdate::EditAction(action, index) => {
-                        let Some(mut config) = config() else {
+                    CharacterUpdate::EditAction(action, index) => {
+                        let Some(mut character) = character() else {
                             continue;
                         };
 
-                        *config.actions.get_mut(index).unwrap() = action;
-                        save_config(config).await;
+                        *character.actions.get_mut(index).unwrap() = action;
+                        save_character(character).await;
                     }
-                    ConfigurationUpdate::DeleteAction(index) => {
-                        let Some(mut config) = config() else {
+                    CharacterUpdate::DeleteAction(index) => {
+                        let Some(mut character) = character() else {
                             continue;
                         };
 
-                        config.actions.remove(index);
-                        save_config(config).await;
+                        character.actions.remove(index);
+                        save_character(character).await;
                     }
-                    ConfigurationUpdate::ToggleAction(enabled, index) => {
-                        let Some(mut config) = config() else {
+                    CharacterUpdate::ToggleAction(enabled, index) => {
+                        let Some(mut character) = character() else {
                             continue;
                         };
 
-                        let config_mut = config.actions.get_mut(index).unwrap();
-                        config_mut.enabled = enabled;
-                        save_config(config).await;
+                        let character_mut = character.actions.get_mut(index).unwrap();
+                        character_mut.enabled = enabled;
+                        save_character(character).await;
                     }
                 }
             }
         },
     );
-    let save_config = use_callback(move |new_config: Configuration| {
-        config.set(Some(new_config));
-        coroutine.send(ConfigurationUpdate::Save);
-        coroutine.send(ConfigurationUpdate::Set);
+    let save_character = use_callback(move |new_character: Character| {
+        character.set(Some(new_character));
+        coroutine.send(CharacterUpdate::Save);
+        coroutine.send(CharacterUpdate::Set);
     });
     let action_input_kind = use_signal(|| None);
 
-    // Sets a configuration if there is not one
+    // Sets a character if there is not one
     use_effect(move || {
-        if let Some(configs) = configs()
-            && config.peek().is_none()
+        if let Some(characters) = characters()
+            && !characters.is_empty()
+            && character.peek().is_none()
         {
-            config.set(configs.into_iter().next());
-            coroutine.send(ConfigurationUpdate::Set);
+            character.set(characters.into_iter().next());
+            coroutine.send(CharacterUpdate::Set);
         }
     });
 
     rsx! {
         div { class: "flex flex-col pb-15 h-full overflow-y-auto scrollbar",
-            SectionKeyBindings { config_view, save_config }
-            SectionBuffs { config_view, save_config }
-            SectionFixedActions { action_input_kind, config_view, save_config }
-            SectionOthers { config_view, save_config }
+            SectionKeyBindings { character_view, save_character }
+            SectionBuffs { character_view, save_character }
+            SectionFixedActions {
+                action_input_kind,
+                character_view,
+                save_character,
+            }
+            SectionOthers { character_view, save_character }
         }
-        PopupActionConfigurationInput { action_input_kind, actions: config_view().actions }
+        PopupActionConfigurationInput { action_input_kind, actions: character_view().actions }
         div { class: "flex items-center w-full h-10 bg-gray-950 absolute bottom-0 pr-2",
             TextSelect {
                 class: "flex-grow",
-                options: config_names(),
+                options: character_names(),
                 disabled: false,
+                placeholder: "Create a character...",
                 on_create: move |name| {
-                    coroutine.send(ConfigurationUpdate::Create(name));
-                    coroutine.send(ConfigurationUpdate::Set);
+                    coroutine.send(CharacterUpdate::Create(name));
+                    coroutine.send(CharacterUpdate::Set);
                 },
                 on_delete: move |_| {
-                    coroutine.send(ConfigurationUpdate::Delete);
+                    coroutine.send(CharacterUpdate::Delete);
                 },
                 on_select: move |(index, _)| {
-                    let selected = configs.peek().as_ref().unwrap().get(index).cloned().unwrap();
-                    config.set(Some(selected));
-                    coroutine.send(ConfigurationUpdate::Set);
+                    let selected = characters.peek().as_ref().unwrap().get(index).cloned().unwrap();
+                    character.set(Some(selected));
+                    coroutine.send(CharacterUpdate::Set);
                 },
-                selected: config_index(),
+                selected: character_index(),
             }
         }
     }
@@ -223,8 +232,8 @@ fn Section(name: &'static str, children: Element) -> Element {
 
 #[component]
 fn SectionKeyBindings(
-    config_view: Memo<Configuration>,
-    save_config: Callback<Configuration>,
+    character_view: Memo<Character>,
+    save_character: Callback<Character>,
 ) -> Element {
     rsx! {
         Section { name: "Key bindings",
@@ -233,135 +242,135 @@ fn SectionKeyBindings(
                     label: "Rope lift",
                     optional: true,
                     on_value: move |ropelift_key| {
-                        save_config(Configuration {
+                        save_character(Character {
                             ropelift_key,
-                            ..config_view.peek().clone()
+                            ..character_view.peek().clone()
                         });
                     },
-                    value: config_view().ropelift_key,
+                    value: character_view().ropelift_key,
                 }
                 KeyBindingConfigurationInput {
                     label: "Teleport",
                     optional: true,
                     on_value: move |teleport_key| {
-                        save_config(Configuration {
+                        save_character(Character {
                             teleport_key,
-                            ..config_view.peek().clone()
+                            ..character_view.peek().clone()
                         });
                     },
-                    value: config_view().teleport_key,
+                    value: character_view().teleport_key,
                 }
                 KeyBindingConfigurationInput {
                     label: "Jump",
                     on_value: move |key_config: Option<KeyBindingConfiguration>| {
-                        save_config(Configuration {
+                        save_character(Character {
                             jump_key: key_config.expect("not optional"),
-                            ..config_view.peek().clone()
+                            ..character_view.peek().clone()
                         });
                     },
-                    value: config_view().jump_key,
+                    value: character_view().jump_key,
                 }
                 KeyBindingConfigurationInput {
                     label: "Up jump",
                     optional: true,
                     on_value: move |up_jump_key| {
-                        save_config(Configuration {
+                        save_character(Character {
                             up_jump_key,
-                            ..config_view.peek().clone()
+                            ..character_view.peek().clone()
                         });
                     },
-                    value: config_view().up_jump_key,
+                    value: character_view().up_jump_key,
                 }
                 KeyBindingConfigurationInput {
                     label: "Interact",
                     on_value: move |key_config: Option<KeyBindingConfiguration>| {
-                        save_config(Configuration {
+                        save_character(Character {
                             interact_key: key_config.expect("not optional"),
-                            ..config_view.peek().clone()
+                            ..character_view.peek().clone()
                         });
                     },
-                    value: config_view().interact_key,
+                    value: character_view().interact_key,
                 }
                 KeyBindingConfigurationInput {
                     label: "Cash shop",
                     on_value: move |key_config: Option<KeyBindingConfiguration>| {
-                        save_config(Configuration {
+                        save_character(Character {
                             cash_shop_key: key_config.expect("not optional"),
-                            ..config_view.peek().clone()
+                            ..character_view.peek().clone()
                         });
                     },
-                    value: config_view().cash_shop_key,
+                    value: character_view().cash_shop_key,
                 }
                 KeyBindingConfigurationInput {
                     label: "Maple guide",
                     on_value: move |key_config: Option<KeyBindingConfiguration>| {
-                        save_config(Configuration {
+                        save_character(Character {
                             maple_guide_key: key_config.expect("not optional"),
-                            ..config_view.peek().clone()
+                            ..character_view.peek().clone()
                         });
                     },
-                    value: config_view().maple_guide_key,
+                    value: character_view().maple_guide_key,
                 }
                 KeyBindingConfigurationInput {
                     label: "Change channel",
                     on_value: move |key_config: Option<KeyBindingConfiguration>| {
-                        save_config(Configuration {
+                        save_character(Character {
                             change_channel_key: key_config.expect("not optional"),
-                            ..config_view.peek().clone()
+                            ..character_view.peek().clone()
                         });
                     },
-                    value: config_view().change_channel_key,
+                    value: character_view().change_channel_key,
                 }
                 KeyBindingConfigurationInput {
                     label: "Feed pet",
                     on_value: move |key_config: Option<KeyBindingConfiguration>| {
-                        save_config(Configuration {
+                        save_character(Character {
                             feed_pet_key: key_config.expect("not optional"),
-                            ..config_view.peek().clone()
+                            ..character_view.peek().clone()
                         });
                     },
-                    value: config_view().feed_pet_key,
+                    value: character_view().feed_pet_key,
                 }
                 KeyBindingConfigurationInput {
                     label: "Potion",
                     on_value: move |key_config: Option<KeyBindingConfiguration>| {
-                        save_config(Configuration {
+                        save_character(Character {
                             potion_key: key_config.expect("not optional"),
-                            ..config_view.peek().clone()
+                            ..character_view.peek().clone()
                         });
                     },
-                    value: config_view().potion_key,
+                    value: character_view().potion_key,
                 }
                 div { class: "col-span-full grid-cols-3 grid gap-2 justify-items-stretch",
                     KeyBindingConfigurationInput {
                         label: "Familiar menu",
                         on_value: move |key_config: Option<KeyBindingConfiguration>| {
-                            save_config(Configuration {
+                            save_character(Character {
                                 familiar_menu_key: key_config.expect("not optional"),
-                                ..config_view.peek().clone()
+                                ..character_view.peek().clone()
                             });
                         },
-                        value: config_view().familiar_menu_key,
+                        value: character_view().familiar_menu_key,
                     }
                     KeyBindingConfigurationInput {
                         label: "Familiar skill",
                         on_value: move |key_config: Option<KeyBindingConfiguration>| {
-                            save_config(Configuration {
+                            save_character(Character {
                                 familiar_buff_key: key_config.expect("not optional"),
-                                ..config_view.peek().clone()
+                                ..character_view.peek().clone()
                             });
                         },
-                        value: config_view().familiar_buff_key,
+                        value: character_view().familiar_buff_key,
                     }
                     KeyBindingConfigurationInput {
                         label: "Familiar essence",
                         on_value: move |key_config: Option<KeyBindingConfiguration>| {
-                            save_config(Configuration {
+                            save_character(Character {
                                 familiar_essence_key: key_config.expect("not optional"),
-                                ..config_view.peek().clone()
+                                ..character_view.peek().clone()
                             });
                         },
-                        value: config_view().familiar_essence_key,
+                        value: character_view().familiar_essence_key,
                     }
                 }
             }
@@ -370,7 +379,7 @@ fn SectionKeyBindings(
 }
 
 #[component]
-fn SectionBuffs(config_view: Memo<Configuration>, save_config: Callback<Configuration>) -> Element {
+fn SectionBuffs(character_view: Memo<Character>, save_character: Callback<Character>) -> Element {
     #[component]
     fn Buff(
         label: &'static str,
@@ -407,122 +416,122 @@ fn SectionBuffs(config_view: Memo<Configuration>, save_config: Callback<Configur
                 Buff {
                     label: "Sayram's Elixir",
                     on_value: move |sayram_elixir_key| {
-                        save_config(Configuration {
+                        save_character(Character {
                             sayram_elixir_key,
-                            ..config_view.peek().clone()
+                            ..character_view.peek().clone()
                         });
                     },
-                    value: config_view().sayram_elixir_key,
+                    value: character_view().sayram_elixir_key,
                 }
                 Buff {
                     label: "Aurelia's Elixir",
                     on_value: move |aurelia_elixir_key| {
-                        save_config(Configuration {
+                        save_character(Character {
                             aurelia_elixir_key,
-                            ..config_view.peek().clone()
+                            ..character_view.peek().clone()
                         });
                     },
-                    value: config_view().aurelia_elixir_key,
+                    value: character_view().aurelia_elixir_key,
                 }
                 Buff {
                     label: "3x EXP Coupon",
                     on_value: move |exp_x3_key| {
-                        save_config(Configuration {
+                        save_character(Character {
                             exp_x3_key,
-                            ..config_view.peek().clone()
+                            ..character_view.peek().clone()
                         });
                     },
-                    value: config_view().exp_x3_key,
+                    value: character_view().exp_x3_key,
                 }
                 Buff {
                     label: "50% Bonus EXP Coupon",
                     on_value: move |bonus_exp_key| {
-                        save_config(Configuration {
+                        save_character(Character {
                             bonus_exp_key,
-                            ..config_view.peek().clone()
+                            ..character_view.peek().clone()
                         });
                     },
-                    value: config_view().bonus_exp_key,
+                    value: character_view().bonus_exp_key,
                 }
                 Buff {
                     label: "Legion's Wealth",
                     on_value: move |legion_wealth_key| {
-                        save_config(Configuration {
+                        save_character(Character {
                             legion_wealth_key,
-                            ..config_view.peek().clone()
+                            ..character_view.peek().clone()
                         });
                     },
-                    value: config_view().legion_wealth_key,
+                    value: character_view().legion_wealth_key,
                 }
                 Buff {
                     label: "Legion's Luck",
                     on_value: move |legion_luck_key| {
-                        save_config(Configuration {
+                        save_character(Character {
                             legion_luck_key,
-                            ..config_view.peek().clone()
+                            ..character_view.peek().clone()
                         });
                     },
-                    value: config_view().legion_luck_key,
+                    value: character_view().legion_luck_key,
                 }
                 Buff {
                     label: "Wealth Acquisition Potion",
                     on_value: move |wealth_acquisition_potion_key| {
-                        save_config(Configuration {
+                        save_character(Character {
                             wealth_acquisition_potion_key,
-                            ..config_view.peek().clone()
+                            ..character_view.peek().clone()
                         });
                     },
-                    value: config_view().wealth_acquisition_potion_key,
+                    value: character_view().wealth_acquisition_potion_key,
                 }
                 Buff {
                     label: "EXP Accumulation Potion",
                     on_value: move |exp_accumulation_potion_key| {
-                        save_config(Configuration {
+                        save_character(Character {
                             exp_accumulation_potion_key,
-                            ..config_view.peek().clone()
+                            ..character_view.peek().clone()
                         });
                     },
-                    value: config_view().exp_accumulation_potion_key,
+                    value: character_view().exp_accumulation_potion_key,
                 }
                 Buff {
                     label: "Extreme Red Potion",
                     on_value: move |extreme_red_potion_key| {
-                        save_config(Configuration {
+                        save_character(Character {
                             extreme_red_potion_key,
-                            ..config_view.peek().clone()
+                            ..character_view.peek().clone()
                         });
                     },
-                    value: config_view().extreme_red_potion_key,
+                    value: character_view().extreme_red_potion_key,
                 }
                 Buff {
                     label: "Extreme Blue Potion",
                     on_value: move |extreme_blue_potion_key| {
-                        save_config(Configuration {
+                        save_character(Character {
                             extreme_blue_potion_key,
-                            ..config_view.peek().clone()
+                            ..character_view.peek().clone()
                         });
                     },
-                    value: config_view().extreme_blue_potion_key,
+                    value: character_view().extreme_blue_potion_key,
                 }
                 Buff {
                     label: "Extreme Green Potion",
                     on_value: move |extreme_green_potion_key| {
-                        save_config(Configuration {
+                        save_character(Character {
                             extreme_green_potion_key,
-                            ..config_view.peek().clone()
+                            ..character_view.peek().clone()
                         });
                     },
-                    value: config_view().extreme_green_potion_key,
+                    value: character_view().extreme_green_potion_key,
                 }
                 Buff {
                     label: "Extreme Gold Potion",
                     on_value: move |extreme_gold_potion_key| {
-                        save_config(Configuration {
+                        save_character(Character {
                             extreme_gold_potion_key,
-                            ..config_view.peek().clone()
+                            ..character_view.peek().clone()
                         });
                     },
-                    value: config_view().extreme_gold_potion_key,
+                    value: character_view().extreme_gold_potion_key,
                 }
             }
         }
@@ -532,10 +541,10 @@ fn SectionBuffs(config_view: Memo<Configuration>, save_config: Callback<Configur
 #[component]
 fn SectionFixedActions(
     action_input_kind: Signal<Option<ActionConfigurationInputKind>>,
-    config_view: Memo<Configuration>,
-    save_config: Callback<Configuration>,
+    character_view: Memo<Character>,
+    save_character: Callback<Character>,
 ) -> Element {
-    let coroutine = use_coroutine_handle::<ConfigurationUpdate>();
+    let coroutine = use_coroutine_handle::<CharacterUpdate>();
 
     rsx! {
         Section { name: "Fixed actions",
@@ -550,57 +559,54 @@ fn SectionFixedActions(
                     action_input_kind.set(Some(ActionConfigurationInputKind::Edit(action, index)));
                 },
                 on_item_delete: move |index| {
-                    coroutine.send(ConfigurationUpdate::DeleteAction(index));
-                    coroutine.send(ConfigurationUpdate::Set);
+                    coroutine.send(CharacterUpdate::DeleteAction(index));
+                    coroutine.send(CharacterUpdate::Set);
                 },
                 on_item_toggle: move |(enabled, index)| {
-                    coroutine.send(ConfigurationUpdate::ToggleAction(enabled, index));
-                    coroutine.send(ConfigurationUpdate::Set);
+                    coroutine.send(CharacterUpdate::ToggleAction(enabled, index));
+                    coroutine.send(CharacterUpdate::Set);
                 },
-                actions: config_view().actions,
+                actions: character_view().actions,
             }
         }
     }
 }
 
 #[component]
-fn SectionOthers(
-    config_view: Memo<Configuration>,
-    save_config: Callback<Configuration>,
-) -> Element {
+fn SectionOthers(character_view: Memo<Character>, save_character: Callback<Character>) -> Element {
     rsx! {
         Section { name: "Others",
             div { class: "grid grid-cols-2 gap-4",
                 CharactersMillisInput {
                     label: "Feed pet every milliseconds",
                     on_value: move |feed_pet_millis| {
-                        save_config(Configuration {
+                        save_character(Character {
                             feed_pet_millis,
-                            ..config_view.peek().clone()
+                            ..character_view.peek().clone()
                         });
                     },
-                    value: config_view().feed_pet_millis,
+                    value: character_view().feed_pet_millis,
                 }
                 div {} // Spacer
 
                 CharactersSelect::<PotionMode> {
                     label: "Use potion mode",
                     on_select: move |potion_mode| {
-                        save_config(Configuration {
+                        save_character(Character {
                             potion_mode,
-                            ..config_view.peek().clone()
+                            ..character_view.peek().clone()
                         });
                     },
-                    selected: config_view().potion_mode,
+                    selected: character_view().potion_mode,
                 }
-                match config_view().potion_mode {
+                match character_view().potion_mode {
                     PotionMode::EveryMillis(millis) => rsx! {
                         CharactersMillisInput {
                             label: "Use potion every milliseconds",
                             on_value: move |millis| {
-                                save_config(Configuration {
+                                save_character(Character {
                                     potion_mode: PotionMode::EveryMillis(millis),
-                                    ..config_view.peek().clone()
+                                    ..character_view.peek().clone()
                                 });
                             },
                             value: millis,
@@ -610,9 +616,9 @@ fn SectionOthers(
                         CharactersPercentageInput {
                             label: "Use potion health below percentage",
                             on_value: move |percent| {
-                                save_config(Configuration {
+                                save_character(Character {
                                     potion_mode: PotionMode::Percentage(percent),
-                                    ..config_view.peek().clone()
+                                    ..character_view.peek().clone()
                                 });
                             },
                             value: percent,
@@ -623,22 +629,22 @@ fn SectionOthers(
                 CharactersSelect::<Class> {
                     label: "Link key timing class",
                     on_select: move |class| {
-                        save_config(Configuration {
+                        save_character(Character {
                             class,
-                            ..config_view.peek().clone()
+                            ..character_view.peek().clone()
                         });
                     },
-                    selected: config_view().class,
+                    selected: character_view().class,
                 }
                 CharactersCheckbox {
                     label: "Disable walking",
                     on_value: move |disable_adjusting| {
-                        save_config(Configuration {
+                        save_character(Character {
                             disable_adjusting,
-                            ..config_view.peek().clone()
+                            ..character_view.peek().clone()
                         });
                     },
-                    value: config_view().disable_adjusting,
+                    value: character_view().disable_adjusting,
                 }
             }
         }
@@ -779,7 +785,20 @@ fn PopupActionConfigurationInput(
             }
         })
     });
-    let coroutine = use_coroutine_handle::<ConfigurationUpdate>();
+    let coroutine = use_coroutine_handle::<CharacterUpdate>();
+    let save_action = use_callback(move |action| {
+        let update = match action_input_kind
+            .take()
+            .expect("input kind must already be set")
+        {
+            ActionConfigurationInputKind::Add(_) => CharacterUpdate::AddAction(action),
+            ActionConfigurationInputKind::Edit(_, index) => {
+                CharacterUpdate::EditAction(action, index)
+            }
+        };
+        coroutine.send(update);
+        coroutine.send(CharacterUpdate::Set);
+    });
 
     rsx! {
         if let Some(State { action, modifying, section_text, can_create_linked_action }) = state() {
@@ -794,19 +813,7 @@ fn PopupActionConfigurationInput(
                                 action_input_kind.set(None);
                             },
                             on_value: move |action| {
-                                let update = match action_input_kind
-                                    .take()
-                                    .expect("input kind must already be set")
-                                {
-                                    ActionConfigurationInputKind::Add(_) => {
-                                        ConfigurationUpdate::AddAction(action)
-                                    }
-                                    ActionConfigurationInputKind::Edit(_, index) => {
-                                        ConfigurationUpdate::EditAction(action, index)
-                                    }
-                                };
-                                coroutine.send(update);
-                                coroutine.send(ConfigurationUpdate::Set);
+                                save_action(action);
                             },
                             value: action,
                         }

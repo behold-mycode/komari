@@ -27,7 +27,7 @@ use crate::detect::{ArrowsCalibrating, ArrowsState, CachedDetector, Detector};
 #[cfg(debug_assertions)]
 use crate::mat::OwnedMat;
 use crate::{
-    Action, ActionCondition, ActionConfigurationCondition, ActionKey, CaptureMode, Configuration,
+    Action, ActionCondition, ActionConfigurationCondition, ActionKey, CaptureMode, Character,
     GameState, KeyBinding, KeyBindingConfiguration, Minimap as MinimapData, PotionMode,
     RequestHandler, Settings,
     bridge::{ImageCapture, ImageCaptureKind, KeySenderMethod},
@@ -46,7 +46,7 @@ static GAME_STATE: LazyLock<broadcast::Sender<GameState>> =
 
 pub struct DefaultRequestHandler<'a> {
     pub context: &'a mut Context,
-    pub config: &'a mut Configuration,
+    pub character: &'a mut Character,
     pub settings: &'a mut Settings,
     pub buffs: &'a mut Vec<(BuffKind, KeyBinding)>,
     pub buff_states: &'a mut Vec<BuffState>,
@@ -152,7 +152,7 @@ impl DefaultRequestHandler<'_> {
             .data()
             .map(|minimap| minimap.actions_any_reset_on_erda_condition)
             .unwrap_or_default();
-        let actions = config_actions(self.config)
+        let actions = config_actions(self.character)
             .into_iter()
             .chain(self.actions.iter().copied())
             .collect::<Vec<_>>();
@@ -160,7 +160,7 @@ impl DefaultRequestHandler<'_> {
             mode,
             actions: actions.as_slice(),
             buffs: self.buffs,
-            familiar_essence_key: self.config.familiar_essence_key.key,
+            familiar_essence_key: self.character.familiar_essence_key.key,
             familiar_swappable_slots: self.settings.familiars.swappable_familiars,
             familiar_swappable_rarities: &self.settings.familiars.swappable_rarities,
             familiar_swap_check_millis: self.settings.familiars.swap_check_millis,
@@ -220,30 +220,32 @@ impl RequestHandler for DefaultRequestHandler<'_> {
         self.update_rotator_actions();
     }
 
-    fn on_update_configuration(&mut self, config: Configuration) {
-        *self.config = config;
-        *self.buffs = config_buffs(self.config);
+    fn on_update_character(&mut self, character: Character) {
+        *self.character = character;
+        *self.buffs = config_buffs(self.character);
         self.player.reset();
-        self.player.config.class = self.config.class;
-        self.player.config.disable_adjusting = self.config.disable_adjusting;
-        self.player.config.interact_key = self.config.interact_key.key.into();
-        self.player.config.grappling_key = self.config.ropelift_key.map(|key| key.key.into());
-        self.player.config.teleport_key = self.config.teleport_key.map(|key| key.key.into());
-        self.player.config.jump_key = self.config.jump_key.key.into();
-        self.player.config.upjump_key = self.config.up_jump_key.map(|key| key.key.into());
-        self.player.config.cash_shop_key = self.config.cash_shop_key.key.into();
-        self.player.config.familiar_key = self.config.familiar_menu_key.key.into();
-        self.player.config.maple_guide_key = self.config.maple_guide_key.key.into();
-        self.player.config.change_channel_key = self.config.change_channel_key.key.into();
-        self.player.config.potion_key = self.config.potion_key.key.into();
-        self.player.config.use_potion_below_percent =
-            match (self.config.potion_key.enabled, self.config.potion_mode) {
-                (false, _) | (_, PotionMode::EveryMillis(_)) => None,
-                (_, PotionMode::Percentage(percent)) => Some(percent / 100.0),
-            };
-        self.player.config.update_health_millis = Some(self.config.health_update_millis);
+        self.player.config.class = self.character.class;
+        self.player.config.disable_adjusting = self.character.disable_adjusting;
+        self.player.config.interact_key = self.character.interact_key.key.into();
+        self.player.config.grappling_key = self.character.ropelift_key.map(|key| key.key.into());
+        self.player.config.teleport_key = self.character.teleport_key.map(|key| key.key.into());
+        self.player.config.jump_key = self.character.jump_key.key.into();
+        self.player.config.upjump_key = self.character.up_jump_key.map(|key| key.key.into());
+        self.player.config.cash_shop_key = self.character.cash_shop_key.key.into();
+        self.player.config.familiar_key = self.character.familiar_menu_key.key.into();
+        self.player.config.maple_guide_key = self.character.maple_guide_key.key.into();
+        self.player.config.change_channel_key = self.character.change_channel_key.key.into();
+        self.player.config.potion_key = self.character.potion_key.key.into();
+        self.player.config.use_potion_below_percent = match (
+            self.character.potion_key.enabled,
+            self.character.potion_mode,
+        ) {
+            (false, _) | (_, PotionMode::EveryMillis(_)) => None,
+            (_, PotionMode::Percentage(percent)) => Some(percent / 100.0),
+        };
+        self.player.config.update_health_millis = Some(self.character.health_update_millis);
         self.buff_states.iter_mut().for_each(|state| {
-            state.update_enabled_state(self.config, self.settings);
+            state.update_enabled_state(self.character, self.settings);
         });
         self.update_rotator_actions();
     }
@@ -285,7 +287,7 @@ impl RequestHandler for DefaultRequestHandler<'_> {
 
         *self.settings = settings;
         self.buff_states.iter_mut().for_each(|state| {
-            state.update_enabled_state(self.config, self.settings);
+            state.update_enabled_state(self.character, self.settings);
         });
         self.update_rotator_actions();
     }
@@ -461,73 +463,76 @@ fn extract_minimap(context: &Context, mat: &impl MatTraitConst) -> Option<(Vec<u
     None
 }
 
-pub fn config_buffs(config: &Configuration) -> Vec<(BuffKind, KeyBinding)> {
+pub fn config_buffs(character: &Character) -> Vec<(BuffKind, KeyBinding)> {
     BuffKind::iter()
         .filter_map(|kind| {
             let enabled_key = match kind {
                 BuffKind::Rune => None, // Internal buff
-                BuffKind::Familiar => config
+                BuffKind::Familiar => character
                     .familiar_buff_key
                     .enabled
-                    .then_some(config.familiar_buff_key.key),
-                BuffKind::SayramElixir => config
+                    .then_some(character.familiar_buff_key.key),
+                BuffKind::SayramElixir => character
                     .sayram_elixir_key
                     .enabled
-                    .then_some(config.sayram_elixir_key.key),
-                BuffKind::AureliaElixir => config
+                    .then_some(character.sayram_elixir_key.key),
+                BuffKind::AureliaElixir => character
                     .aurelia_elixir_key
                     .enabled
-                    .then_some(config.aurelia_elixir_key.key),
-                BuffKind::ExpCouponX3 => config.exp_x3_key.enabled.then_some(config.exp_x3_key.key),
-                BuffKind::BonusExpCoupon => config
+                    .then_some(character.aurelia_elixir_key.key),
+                BuffKind::ExpCouponX3 => character
+                    .exp_x3_key
+                    .enabled
+                    .then_some(character.exp_x3_key.key),
+                BuffKind::BonusExpCoupon => character
                     .bonus_exp_key
                     .enabled
-                    .then_some(config.bonus_exp_key.key),
-                BuffKind::LegionLuck => config
+                    .then_some(character.bonus_exp_key.key),
+                BuffKind::LegionLuck => character
                     .legion_luck_key
                     .enabled
-                    .then_some(config.legion_luck_key.key),
-                BuffKind::LegionWealth => config
+                    .then_some(character.legion_luck_key.key),
+                BuffKind::LegionWealth => character
                     .legion_wealth_key
                     .enabled
-                    .then_some(config.legion_wealth_key.key),
-                BuffKind::WealthAcquisitionPotion => config
+                    .then_some(character.legion_wealth_key.key),
+                BuffKind::WealthAcquisitionPotion => character
                     .wealth_acquisition_potion_key
                     .enabled
-                    .then_some(config.wealth_acquisition_potion_key.key),
-                BuffKind::ExpAccumulationPotion => config
+                    .then_some(character.wealth_acquisition_potion_key.key),
+                BuffKind::ExpAccumulationPotion => character
                     .exp_accumulation_potion_key
                     .enabled
-                    .then_some(config.exp_accumulation_potion_key.key),
-                BuffKind::ExtremeRedPotion => config
+                    .then_some(character.exp_accumulation_potion_key.key),
+                BuffKind::ExtremeRedPotion => character
                     .extreme_red_potion_key
                     .enabled
-                    .then_some(config.extreme_red_potion_key.key),
-                BuffKind::ExtremeBluePotion => config
+                    .then_some(character.extreme_red_potion_key.key),
+                BuffKind::ExtremeBluePotion => character
                     .extreme_blue_potion_key
                     .enabled
-                    .then_some(config.extreme_blue_potion_key.key),
-                BuffKind::ExtremeGreenPotion => config
+                    .then_some(character.extreme_blue_potion_key.key),
+                BuffKind::ExtremeGreenPotion => character
                     .extreme_green_potion_key
                     .enabled
-                    .then_some(config.extreme_green_potion_key.key),
-                BuffKind::ExtremeGoldPotion => config
+                    .then_some(character.extreme_green_potion_key.key),
+                BuffKind::ExtremeGoldPotion => character
                     .extreme_gold_potion_key
                     .enabled
-                    .then_some(config.extreme_gold_potion_key.key),
+                    .then_some(character.extreme_gold_potion_key.key),
             };
             Some(kind).zip(enabled_key)
         })
         .collect()
 }
 
-fn config_actions(config: &Configuration) -> Vec<Action> {
+fn config_actions(character: &Character) -> Vec<Action> {
     let mut vec = Vec::new();
-    if let KeyBindingConfiguration { key, enabled: true } = config.feed_pet_key {
+    if let KeyBindingConfiguration { key, enabled: true } = character.feed_pet_key {
         let feed_pet_action = Action::Key(ActionKey {
             key,
             count: 1,
-            condition: ActionCondition::EveryMillis(config.feed_pet_millis),
+            condition: ActionCondition::EveryMillis(character.feed_pet_millis),
             wait_before_use_millis: 350,
             wait_after_use_millis: 350,
             ..ActionKey::default()
@@ -536,8 +541,8 @@ fn config_actions(config: &Configuration) -> Vec<Action> {
         vec.push(feed_pet_action);
         vec.push(feed_pet_action);
     }
-    if let KeyBindingConfiguration { key, enabled: true } = config.potion_key
-        && let PotionMode::EveryMillis(millis) = config.potion_mode
+    if let KeyBindingConfiguration { key, enabled: true } = character.potion_key
+        && let PotionMode::EveryMillis(millis) = character.potion_mode
     {
         vec.push(Action::Key(ActionKey {
             key,
@@ -550,7 +555,7 @@ fn config_actions(config: &Configuration) -> Vec<Action> {
     }
 
     let mut i = 0;
-    let config_actions = &config.actions;
+    let config_actions = &character.actions;
     while i < config_actions.len() {
         let action = config_actions[i];
         let enabled = action.enabled;

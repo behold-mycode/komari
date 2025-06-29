@@ -26,7 +26,7 @@ use crate::{
     minimap::{Minimap, MinimapState},
     network::{DiscordNotification, NotificationKind},
     player::{PanicTo, Panicking, Player, PlayerState},
-    query_configs, query_settings,
+    query_characters, query_settings,
     request_handler::{DefaultRequestHandler, config_buffs},
     rng::Rng,
     rotator::Rotator,
@@ -162,8 +162,12 @@ fn update_loop() {
     let handle = Handle::new("MapleStoryClass");
     let mut rotator = Rotator::default();
     let mut actions = Vec::<Action>::new();
-    let mut config = query_configs().unwrap().into_iter().next().unwrap(); // Override by UI
-    let mut buffs = config_buffs(&config);
+    let mut character = query_characters()
+        .unwrap()
+        .into_iter()
+        .next()
+        .unwrap_or_default(); // Override by UI
+    let mut buffs = config_buffs(&character);
     let settings = query_settings(); // Override by UI
     let seeds = query_seeds(); // Fixed, unchanged
     let rng = Rng::new(seeds.seed); // Create one for Context
@@ -217,7 +221,7 @@ fn update_loop() {
         .map(BuffState::new)
         .collect::<Vec<BuffState>>();
     buff_states.iter_mut().for_each(|state| {
-        state.update_enabled_state(&config, &settings.borrow());
+        state.update_enabled_state(&character, &settings.borrow());
     });
 
     #[cfg(debug_assertions)]
@@ -263,7 +267,7 @@ fn update_loop() {
         // I know what you are thinking...
         let mut handler = DefaultRequestHandler {
             context: &mut context,
-            config: &mut config,
+            character: &mut character,
             settings: &mut settings_borrow_mut,
             buffs: &mut buffs,
             buff_states: &mut buff_states,
