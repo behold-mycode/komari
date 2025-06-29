@@ -7,7 +7,6 @@ use std::{
 use anyhow::Result;
 use opencv::core::Rect;
 use platforms::windows::KeyKind;
-use rand::distr::{Alphanumeric, SampleString};
 use rusqlite::{Connection, Params, Statement, types::Null};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use strum::{Display, EnumIter, EnumString};
@@ -28,7 +27,7 @@ static CONNECTION: LazyLock<Mutex<Connection>> = LazyLock::new(|| {
             id INTEGER PRIMARY KEY,
             data TEXT NOT NULL
         );
-        CREATE TABLE IF NOT EXISTS configurations (
+        CREATE TABLE IF NOT EXISTS characters (
             id INTEGER PRIMARY KEY,
             data TEXT NOT NULL
         );
@@ -159,25 +158,16 @@ pub struct Notifications {
 pub struct Settings {
     #[serde(skip_serializing, default)]
     pub id: Option<i64>,
-    #[serde(default)]
     pub capture_mode: CaptureMode,
     #[serde(default = "enable_rune_solving_default")]
     pub enable_rune_solving: bool,
-    #[serde(default)]
     pub enable_change_channel_on_elite_boss_appear: bool,
-    #[serde(default)]
     pub enable_panic_mode: bool,
-    #[serde(default)]
     pub panic_mode: PanicMode,
-    #[serde(default)]
     pub stop_on_fail_or_change_map: bool,
-    #[serde(default)]
     pub input_method: InputMethod,
-    #[serde(default)]
     pub input_method_rpc_server_url: String,
-    #[serde(default)]
     pub notifications: Notifications,
-    #[serde(default)]
     pub familiars: Familiars,
     #[serde(default = "toggle_actions_key_default")]
     pub toggle_actions_key: KeyBindingConfiguration,
@@ -257,30 +247,24 @@ pub enum CaptureMode {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Configuration {
+pub struct Character {
     #[serde(skip_serializing, default)]
     pub id: Option<i64>,
     pub name: String,
-    #[serde(default)]
     pub ropelift_key: Option<KeyBindingConfiguration>,
     pub teleport_key: Option<KeyBindingConfiguration>,
-    #[serde(default = "jump_key_default")]
     pub jump_key: KeyBindingConfiguration,
     pub up_jump_key: Option<KeyBindingConfiguration>,
     pub interact_key: KeyBindingConfiguration,
     pub cash_shop_key: KeyBindingConfiguration,
-    #[serde(default)]
     pub familiar_menu_key: KeyBindingConfiguration,
-    #[serde(default)]
     pub maple_guide_key: KeyBindingConfiguration,
-    #[serde(default)]
     pub change_channel_key: KeyBindingConfiguration,
     pub feed_pet_key: KeyBindingConfiguration,
     pub feed_pet_millis: u64,
     pub potion_key: KeyBindingConfiguration,
     pub potion_mode: PotionMode,
     pub health_update_millis: u64,
-    #[serde(default)]
     pub familiar_buff_key: KeyBindingConfiguration,
     #[serde(default = "familiar_essence_key_default")]
     pub familiar_essence_key: KeyBindingConfiguration,
@@ -290,23 +274,14 @@ pub struct Configuration {
     pub bonus_exp_key: KeyBindingConfiguration,
     pub legion_wealth_key: KeyBindingConfiguration,
     pub legion_luck_key: KeyBindingConfiguration,
-    #[serde(default)]
     pub wealth_acquisition_potion_key: KeyBindingConfiguration,
-    #[serde(default)]
     pub exp_accumulation_potion_key: KeyBindingConfiguration,
-    #[serde(default)]
     pub extreme_red_potion_key: KeyBindingConfiguration,
-    #[serde(default)]
     pub extreme_blue_potion_key: KeyBindingConfiguration,
-    #[serde(default)]
     pub extreme_green_potion_key: KeyBindingConfiguration,
-    #[serde(default)]
     pub extreme_gold_potion_key: KeyBindingConfiguration,
-    #[serde(default)]
     pub class: Class,
-    #[serde(default)]
     pub disable_adjusting: bool,
-    #[serde(default)]
     pub actions: Vec<ActionConfiguration>,
 }
 
@@ -326,7 +301,7 @@ fn familiar_essence_key_default() -> KeyBindingConfiguration {
     }
 }
 
-impl Default for Configuration {
+impl Default for Character {
     fn default() -> Self {
         Self {
             id: None,
@@ -509,7 +484,6 @@ impl Default for MobbingKey {
 #[derive(Clone, Copy, Default, PartialEq, Debug, Serialize, Deserialize)]
 pub struct PingPong {
     pub bound: Bound,
-    #[serde(default)]
     pub key: MobbingKey,
 }
 
@@ -534,7 +508,7 @@ pub enum RotationMode {
     PingPong(PingPong),
 }
 
-impl_identifiable!(Configuration);
+impl_identifiable!(Character);
 
 #[derive(PartialEq, Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(default)]
@@ -574,7 +548,6 @@ impl From<Platform> for pathing::Platform {
 #[derive(Clone, Copy, Default, PartialEq, Debug, Serialize, Deserialize)]
 pub struct Position {
     pub x: i32,
-    #[serde(default)]
     pub x_random_range: i32,
     pub y: i32,
     pub allow_adjusting: bool,
@@ -590,7 +563,6 @@ pub struct ActionMove {
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
 pub struct ActionKey {
     pub key: KeyBinding,
-    #[serde(default)]
     pub link_key: Option<LinkKeyBinding>,
     #[serde(default = "count_default")]
     pub count: u32,
@@ -599,10 +571,8 @@ pub struct ActionKey {
     pub direction: ActionKeyDirection,
     pub with: ActionKeyWith,
     pub wait_before_use_millis: u64,
-    #[serde(default)]
     pub wait_before_use_millis_random_range: u64,
     pub wait_after_use_millis: u64,
-    #[serde(default)]
     pub wait_after_use_millis_random_range: u64,
     pub queue_to_front: Option<bool>,
 }
@@ -993,34 +963,16 @@ pub fn upsert_settings(settings: &mut Settings) -> Result<()> {
     upsert_to_table("settings", settings)
 }
 
-pub fn query_configs() -> Result<Vec<Configuration>> {
-    let mut result = query_from_table("configurations");
-    if let Ok(vec) = result.as_mut() {
-        if vec.is_empty() {
-            let mut config = Configuration {
-                name: "default".to_string(),
-                ..Configuration::default()
-            };
-            upsert_config(&mut config).unwrap();
-            vec.push(config);
-        } else {
-            vec.iter_mut().for_each(|config| {
-                if config.name.is_empty() {
-                    config.name = Alphanumeric.sample_string(&mut rand::rng(), 8);
-                    upsert_config(config).unwrap();
-                }
-            });
-        }
-    }
-    result
+pub fn query_characters() -> Result<Vec<Character>> {
+    query_from_table("characters")
 }
 
-pub fn upsert_config(config: &mut Configuration) -> Result<()> {
-    upsert_to_table("configurations", config)
+pub fn upsert_character(character: &mut Character) -> Result<()> {
+    upsert_to_table("characters", character)
 }
 
-pub fn delete_config(config: &Configuration) -> Result<()> {
-    delete_from_table("configurations", config)
+pub fn delete_character(character: &Character) -> Result<()> {
+    delete_from_table("characters", character)
 }
 
 pub fn query_maps() -> Result<Vec<Minimap>> {
