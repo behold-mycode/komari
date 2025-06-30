@@ -975,15 +975,15 @@ pub fn delete_character(character: &Character) -> Result<()> {
     delete_from_table("characters", character)
 }
 
-pub fn query_maps() -> Result<Vec<Minimap>> {
+pub fn query_minimaps() -> Result<Vec<Minimap>> {
     query_from_table("maps")
 }
 
-pub fn upsert_map(map: &mut Minimap) -> Result<()> {
+pub fn upsert_minimap(map: &mut Minimap) -> Result<()> {
     upsert_to_table("maps", map)
 }
 
-pub fn delete_map(map: &Minimap) -> Result<()> {
+pub fn delete_minimap(map: &Minimap) -> Result<()> {
     delete_from_table("maps", map)
 }
 

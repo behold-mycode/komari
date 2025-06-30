@@ -44,8 +44,8 @@ pub use {
         ActionKeyDirection, ActionKeyWith, ActionMove, AutoMobbing, Bound, CaptureMode, Character,
         Class, FamiliarRarity, Familiars, InputMethod, KeyBinding, KeyBindingConfiguration,
         LinkKeyBinding, Minimap, MobbingKey, Notifications, PanicMode, PingPong, Platform,
-        Position, PotionMode, RotationMode, Settings, SwappableFamiliars, delete_map, query_maps,
-        query_settings, upsert_map, upsert_settings,
+        Position, PotionMode, RotationMode, Settings, SwappableFamiliars, query_settings,
+        upsert_settings,
     },
     pathing::MAX_PLATFORMS_COUNT,
     rotator::RotatorMode,
@@ -85,7 +85,7 @@ macro_rules! expect_value_variant {
 enum Request {
     RotateActions(bool),
     CreateMinimap(String),
-    UpdateMinimap(Option<String>, Minimap),
+    UpdateMinimap(Option<String>, Option<Minimap>),
     UpdateCharacter(Option<Character>),
     UpdateSettings(Settings),
     RedetectMinimap,
@@ -138,7 +138,7 @@ pub(crate) trait RequestHandler {
 
     fn on_create_minimap(&self, name: String) -> Option<Minimap>;
 
-    fn on_update_minimap(&mut self, preset: Option<String>, minimap: Minimap);
+    fn on_update_minimap(&mut self, preset: Option<String>, minimap: Option<Minimap>);
 
     fn on_update_character(&mut self, character: Option<Character>);
 
@@ -191,6 +191,14 @@ pub async fn rotate_actions(halting: bool) {
     )
 }
 
+/// Queries minimaps from the database.
+pub async fn query_minimaps() -> Option<Vec<Minimap>> {
+    spawn_blocking(database::query_minimaps).await.unwrap().ok()
+}
+
+/// Creates a new minimap from the currently detected minimap.
+///
+/// This function does not insert the created minimap into the database.
 pub async fn create_minimap(name: String) -> Option<Minimap> {
     expect_value_variant!(
         request(Request::CreateMinimap(name)).await,
@@ -198,11 +206,36 @@ pub async fn create_minimap(name: String) -> Option<Minimap> {
     )
 }
 
-pub async fn update_minimap(preset: Option<String>, minimap: Minimap) {
+/// Upserts minimap to the database.
+///
+/// If `minimap` does not previously exist, a new one will be created and its `id` will
+/// be updated.
+///
+/// Returns the updated [`Minimap`].
+pub async fn upsert_minimap(mut minimap: Minimap) -> Minimap {
+    spawn_blocking(move || {
+        database::upsert_minimap(&mut minimap).expect("failed to upsert minimap");
+        minimap
+    })
+    .await
+    .unwrap()
+}
+
+/// Updates the current minimap used by the main game loop.
+pub async fn update_minimap(preset: Option<String>, minimap: Option<Minimap>) {
     expect_unit_variant!(
         request(Request::UpdateMinimap(preset, minimap)).await,
         Response::UpdateMinimap
     )
+}
+
+/// Deletes `minimap` from the database.
+pub async fn delete_minimap(minimap: Minimap) {
+    spawn_blocking(move || {
+        database::delete_minimap(&minimap).expect("failed to delete minimap");
+    })
+    .await
+    .unwrap();
 }
 
 /// Queries characters from the database.

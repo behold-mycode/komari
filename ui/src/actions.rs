@@ -9,12 +9,11 @@ use std::{
 use backend::{
     Action, ActionCondition, ActionKey, ActionKeyDirection, ActionKeyWith, ActionMove, AutoMobbing,
     Bound, IntoEnumIterator, KeyBinding, LinkKeyBinding, Minimap, MobbingKey, PingPong, Platform,
-    Position, RotationMode, key_receiver, update_minimap, upsert_map,
+    Position, RotationMode, key_receiver, update_minimap, upsert_minimap,
 };
 use dioxus::prelude::*;
 use futures_util::StreamExt;
 use rand::distr::{Alphanumeric, SampleString};
-use tokio::task::spawn_blocking;
 
 use crate::{
     AppState,
@@ -95,21 +94,13 @@ pub fn Actions() -> Element {
     // TODO: Split into functions
     let coroutine = use_coroutine(move |mut rx: UnboundedReceiver<ActionUpdate>| async move {
         let mut save_minimap = async move |current_minimap: Minimap| {
-            let mut save_minimap = current_minimap.clone();
-            spawn_blocking(move || {
-                upsert_map(&mut save_minimap).expect("failed to upsert minimap actions");
-            })
-            .await
-            .unwrap();
-            minimap.set(Some(current_minimap));
+            minimap.set(Some(upsert_minimap(current_minimap).await));
         };
 
         while let Some(message) = rx.next().await {
             match message {
                 ActionUpdate::SetPreset => {
-                    if let Some(minimap) = minimap() {
-                        update_minimap(minimap_preset(), minimap).await;
-                    }
+                    update_minimap(minimap_preset(), minimap()).await;
                 }
                 ActionUpdate::CreatePreset(preset) => {
                     let Some(mut current_minimap) = minimap() else {
