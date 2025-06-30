@@ -679,7 +679,7 @@ impl Rotator {
         };
         let (id, action) = self.normal_actions[i].clone();
 
-        self.normal_index += 1;
+        self.normal_index = (self.normal_index + 1) % len;
         match action {
             RotatorAction::Single(action) => {
                 player.set_normal_action(id, action);
