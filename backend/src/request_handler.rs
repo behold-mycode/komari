@@ -235,8 +235,8 @@ impl RequestHandler for DefaultRequestHandler<'_> {
         self.update_rotator_actions();
     }
 
-    fn on_update_character(&mut self, character: Character) {
-        *self.character = Some(character);
+    fn on_update_character(&mut self, character: Option<Character>) {
+        *self.character = character;
 
         let Some(character) = self.character else {
             return;

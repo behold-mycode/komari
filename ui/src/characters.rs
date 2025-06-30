@@ -7,7 +7,6 @@ use backend::{
 };
 use dioxus::prelude::*;
 use futures_util::StreamExt;
-use tokio::task::spawn_blocking;
 
 use crate::{
     AppState,
@@ -20,16 +19,12 @@ use crate::{
 #[derive(Debug)]
 enum CharacterUpdate {
     Set,
-    Save,
+    Update(Character),
     Create(String),
     Delete,
-    AddAction(ActionConfiguration),
-    EditAction(ActionConfiguration, usize),
-    DeleteAction(usize),
-    ToggleAction(bool, usize),
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(PartialEq, Clone, Copy, Debug)]
 enum ActionConfigurationInputKind {
     Add(ActionConfiguration),
     Edit(ActionConfiguration, usize),
@@ -38,11 +33,7 @@ enum ActionConfigurationInputKind {
 #[component]
 pub fn Characters() -> Element {
     let mut character = use_context::<AppState>().character;
-    let mut characters = use_resource(move || async move {
-        spawn_blocking(|| query_characters().expect("failed to query characters"))
-            .await
-            .unwrap()
-    });
+    let mut characters = use_resource(async || query_characters().await.unwrap_or_default());
     // Maps queried `characters` to names
     let character_names = use_memo(move || {
         characters()
@@ -69,109 +60,42 @@ pub fn Characters() -> Element {
     // Handles async operations for character-related
     let coroutine = use_coroutine(
         move |mut rx: UnboundedReceiver<CharacterUpdate>| async move {
-            let mut save_character = async move |current_character: Character| {
-                let mut save_character = current_character.clone();
-                spawn_blocking(move || {
-                    upsert_character(&mut save_character)
-                        .expect("failed to upsert character actions");
-                })
-                .await
-                .unwrap();
-                character.set(Some(current_character));
+            let mut save_character = async move |new_character: Character| {
+                character.set(Some(upsert_character(new_character).await));
                 characters.restart();
+                update_character(character()).await;
             };
 
             while let Some(message) = rx.next().await {
                 match message {
                     CharacterUpdate::Set => {
-                        if let Some(character) = character() {
-                            update_character(character).await;
-                        }
+                        update_character(character()).await;
                     }
-                    CharacterUpdate::Save => {
-                        let Some(mut character) = character() else {
-                            continue;
-                        };
-                        debug_assert!(character.id.is_some(), "saving invalid character");
-
-                        spawn_blocking(move || {
-                            upsert_character(&mut character).unwrap();
-                        })
-                        .await
-                        .unwrap();
+                    CharacterUpdate::Update(new_character) => {
+                        save_character(new_character).await;
                     }
                     CharacterUpdate::Create(name) => {
-                        let mut new_character = Character {
+                        save_character(Character {
                             name,
                             ..Character::default()
-                        };
-                        let mut save_character = new_character.clone();
-                        let save_id = spawn_blocking(move || {
-                            upsert_character(&mut save_character).unwrap();
-                            save_character
-                                .id
-                                .expect("character id must be valid after creation")
                         })
-                        .await
-                        .unwrap();
-
-                        new_character.id = Some(save_id);
-                        character.set(Some(new_character));
-                        characters.restart();
+                        .await;
                     }
                     CharacterUpdate::Delete => {
                         if let Some(character) = character.take() {
-                            spawn_blocking(move || {
-                                delete_character(&character).expect("failed to delete character");
-                            })
-                            .await
-                            .unwrap();
+                            delete_character(character).await;
+                            update_character(None).await;
                             characters.restart();
                         }
-                    }
-                    CharacterUpdate::AddAction(action) => {
-                        let Some(mut character) = character() else {
-                            continue;
-                        };
-
-                        character.actions.push(action);
-                        save_character(character).await;
-                    }
-                    CharacterUpdate::EditAction(action, index) => {
-                        let Some(mut character) = character() else {
-                            continue;
-                        };
-
-                        *character.actions.get_mut(index).unwrap() = action;
-                        save_character(character).await;
-                    }
-                    CharacterUpdate::DeleteAction(index) => {
-                        let Some(mut character) = character() else {
-                            continue;
-                        };
-
-                        character.actions.remove(index);
-                        save_character(character).await;
-                    }
-                    CharacterUpdate::ToggleAction(enabled, index) => {
-                        let Some(mut character) = character() else {
-                            continue;
-                        };
-
-                        let character_mut = character.actions.get_mut(index).unwrap();
-                        character_mut.enabled = enabled;
-                        save_character(character).await;
                     }
                 }
             }
         },
     );
     let save_character = use_callback(move |new_character: Character| {
-        character.set(Some(new_character));
-        coroutine.send(CharacterUpdate::Save);
-        coroutine.send(CharacterUpdate::Set);
+        coroutine.send(CharacterUpdate::Update(new_character));
     });
-    let action_input_kind = use_signal(|| None);
+    let mut action_input_kind = use_signal(|| None);
 
     // Sets a character if there is not one
     use_effect(move || {
@@ -195,7 +119,29 @@ pub fn Characters() -> Element {
             }
             SectionOthers { character_view, save_character }
         }
-        PopupActionConfigurationInput { action_input_kind, actions: character_view().actions }
+
+        if let Some(kind) = action_input_kind() {
+            PopupActionConfigurationInput {
+                is_actions_empty: character_view().actions.is_empty(),
+                on_cancel: move |_| {
+                    action_input_kind.set(None);
+                },
+                on_value: move |action| {
+                    let Some(mut character) = character.peek().clone() else {
+                        return;
+                    };
+                    match action_input_kind.take().expect("input kind must already be set") {
+                        ActionConfigurationInputKind::Add(_) => character.actions.push(action),
+                        ActionConfigurationInputKind::Edit(_, index) => {
+                            *character.actions.get_mut(index).expect("valid index") = action;
+                        }
+                    };
+                    save_character(character);
+                },
+                kind,
+            }
+        }
+
         div { class: "flex items-center w-full h-10 bg-gray-950 absolute bottom-0 pr-2",
             TextSelect {
                 class: "flex-grow",
@@ -204,7 +150,6 @@ pub fn Characters() -> Element {
                 placeholder: "Create a character...",
                 on_create: move |name| {
                     coroutine.send(CharacterUpdate::Create(name));
-                    coroutine.send(CharacterUpdate::Set);
                 },
                 on_delete: move |_| {
                     coroutine.send(CharacterUpdate::Delete);
@@ -589,7 +534,17 @@ fn SectionFixedActions(
     character_view: Memo<Character>,
     save_character: Callback<Character>,
 ) -> Element {
-    let coroutine = use_coroutine_handle::<CharacterUpdate>();
+    let delete_action = use_callback(move |index| {
+        let mut character = character_view.peek().clone();
+        character.actions.remove(index);
+        save_character(character);
+    });
+    let toggle_action = use_callback(move |(enabled, index): (bool, usize)| {
+        let mut character = character_view.peek().clone();
+        let action = character.actions.get_mut(index).unwrap();
+        action.enabled = enabled;
+        save_character(character);
+    });
 
     rsx! {
         Section { name: "Fixed actions",
@@ -604,14 +559,8 @@ fn SectionFixedActions(
                 on_item_click: move |(action, index)| {
                     action_input_kind.set(Some(ActionConfigurationInputKind::Edit(action, index)));
                 },
-                on_item_delete: move |index| {
-                    coroutine.send(CharacterUpdate::DeleteAction(index));
-                    coroutine.send(CharacterUpdate::Set);
-                },
-                on_item_toggle: move |(enabled, index)| {
-                    coroutine.send(CharacterUpdate::ToggleAction(enabled, index));
-                    coroutine.send(CharacterUpdate::Set);
-                },
+                on_item_delete: delete_action,
+                on_item_toggle: toggle_action,
                 actions: character_view().actions,
             }
         }
@@ -844,76 +793,41 @@ fn CharactersMillisInput(
 
 #[component]
 fn PopupActionConfigurationInput(
-    action_input_kind: Signal<Option<ActionConfigurationInputKind>>,
-    actions: ReadOnlySignal<Vec<ActionConfiguration>>,
+    is_actions_empty: bool,
+    on_cancel: EventHandler,
+    on_value: EventHandler<ActionConfiguration>,
+    kind: ActionConfigurationInputKind,
 ) -> Element {
-    #[derive(PartialEq, Clone, Debug)]
-    struct State {
-        action: ActionConfiguration,
-        modifying: bool,
-        section_text: String,
-        can_create_linked_action: bool,
-    }
-
-    let state = use_memo(move || {
-        action_input_kind().map(|kind| {
-            let (action, index) = match kind {
-                ActionConfigurationInputKind::Add(action) => (action, None),
-                ActionConfigurationInputKind::Edit(action, index) => (action, Some(index)),
-            };
-            let modifying = matches!(kind, ActionConfigurationInputKind::Edit(_, _));
-            let can_create_linked_action = match action.condition {
-                ActionConfigurationCondition::EveryMillis(_) => {
-                    !actions().is_empty() && index != Some(0)
-                }
-                ActionConfigurationCondition::Linked => false,
-            };
-            let section_text = if modifying {
-                "Modify a fixed action".to_string()
-            } else {
-                "Add a new fixed action".to_string()
-            };
-
-            State {
-                action,
-                modifying,
-                section_text,
-                can_create_linked_action,
-            }
-        })
-    });
-    let coroutine = use_coroutine_handle::<CharacterUpdate>();
-    let save_action = use_callback(move |action| {
-        let update = match action_input_kind
-            .take()
-            .expect("input kind must already be set")
-        {
-            ActionConfigurationInputKind::Add(_) => CharacterUpdate::AddAction(action),
-            ActionConfigurationInputKind::Edit(_, index) => {
-                CharacterUpdate::EditAction(action, index)
-            }
-        };
-        coroutine.send(update);
-        coroutine.send(CharacterUpdate::Set);
-    });
+    let (action, index) = match kind {
+        ActionConfigurationInputKind::Add(action) => (action, None),
+        ActionConfigurationInputKind::Edit(action, index) => (action, Some(index)),
+    };
+    let modifying = matches!(kind, ActionConfigurationInputKind::Edit(_, _));
+    let can_create_linked_action = match action.condition {
+        ActionConfigurationCondition::EveryMillis(_) => !is_actions_empty && index != Some(0),
+        ActionConfigurationCondition::Linked => false,
+    };
+    let section_text = if modifying {
+        "Modify a fixed action".to_string()
+    } else {
+        "Add a new fixed action".to_string()
+    };
 
     rsx! {
-        if let Some(State { action, modifying, section_text, can_create_linked_action }) = state() {
-            div { class: "p-8 w-full h-full absolute inset-0 z-1 bg-gray-950/80",
-                div { class: "bg-gray-900 h-full px-2",
-                    div { class: "flex flex-col gap-2 relative h-full",
-                        div { class: "flex flex-none items-center title-xs h-10", {section_text} }
-                        ActionConfigurationInput {
-                            modifying,
-                            can_create_linked_action,
-                            on_cancel: move |_| {
-                                action_input_kind.set(None);
-                            },
-                            on_value: move |action| {
-                                save_action(action);
-                            },
-                            value: action,
-                        }
+        div { class: "p-8 w-full h-full absolute inset-0 z-1 bg-gray-950/80",
+            div { class: "bg-gray-900 h-full px-2",
+                div { class: "flex flex-col gap-2 relative h-full",
+                    div { class: "flex flex-none items-center title-xs h-10", {section_text} }
+                    ActionConfigurationInput {
+                        modifying,
+                        can_create_linked_action,
+                        on_cancel: move |_| {
+                            on_cancel(());
+                        },
+                        on_value: move |action| {
+                            on_value(action);
+                        },
+                        value: action,
                     }
                 }
             }
