@@ -44,8 +44,7 @@ pub use {
         ActionKeyDirection, ActionKeyWith, ActionMove, AutoMobbing, Bound, CaptureMode, Character,
         Class, FamiliarRarity, Familiars, InputMethod, KeyBinding, KeyBindingConfiguration,
         LinkKeyBinding, Minimap, MobbingKey, Notifications, PanicMode, PingPong, Platform,
-        Position, PotionMode, RotationMode, Settings, SwappableFamiliars, query_settings,
-        upsert_settings,
+        Position, PotionMode, RotationMode, Settings, SwappableFamiliars,
     },
     pathing::MAX_PLATFORMS_COUNT,
     rotator::RotatorMode,
@@ -189,6 +188,21 @@ pub async fn rotate_actions(halting: bool) {
         request(Request::RotateActions(halting)).await,
         Response::RotateActions
     )
+}
+
+/// Queries settings from the database.
+pub async fn query_settings() -> Settings {
+    spawn_blocking(database::query_settings).await.unwrap()
+}
+
+/// Upserts settings to the database.
+pub async fn upsert_settings(mut settings: Settings) -> Settings {
+    spawn_blocking(move || {
+        database::upsert_settings(&mut settings).expect("failed to upsert settings");
+        settings
+    })
+    .await
+    .unwrap()
 }
 
 /// Queries minimaps from the database.
