@@ -182,7 +182,7 @@ fn SectionKeyBindings(
 ) -> Element {
     rsx! {
         Section { name: "Key bindings",
-            div { class: "grid grid-cols-2 gap-4",
+            div { class: "grid grid-cols-2 2xl:grid-cols-4 gap-4",
                 KeyBindingConfigurationInput {
                     label: "Rope lift",
                     optional: true,
@@ -346,9 +346,10 @@ fn SectionBuffs(character_view: Memo<Character>, save_character: Callback<Charac
         value: KeyBindingConfiguration,
     ) -> Element {
         rsx! {
-            div { class: "grid grid-cols-[140px_auto] gap-2",
+            div { class: "flex gap-2",
                 KeyBindingConfigurationInput {
                     label,
+                    div_class: "flex-2",
                     disabled,
                     on_value: move |config: Option<KeyBindingConfiguration>| {
                         on_value(config.expect("not optional"));
@@ -373,24 +374,24 @@ fn SectionBuffs(character_view: Memo<Character>, save_character: Callback<Charac
 
     rsx! {
         Section { name: "Buffs",
-            div { class: "grid grid-cols-2 gap-4",
-                Checkbox {
-                    label: "Familiar essence and skill",
-                    disabled: character_view().id.is_none(),
-                    on_value: move |enabled| {
-                        let character = character_view.peek().clone();
-                        save_character(Character {
-                            familiar_buff_key: KeyBindingConfiguration {
-                                enabled,
-                                ..character.familiar_buff_key
-                            },
-                            ..character
-                        });
-                    },
-                    value: character_view().familiar_buff_key.enabled,
-                    input_class: "w-6",
-                }
-                div {}
+            Checkbox {
+                label: "Familiar essence and skill",
+                div_class: "mb-2",
+                disabled: character_view().id.is_none(),
+                on_value: move |enabled| {
+                    let character = character_view.peek().clone();
+                    save_character(Character {
+                        familiar_buff_key: KeyBindingConfiguration {
+                            enabled,
+                            ..character.familiar_buff_key
+                        },
+                        ..character
+                    });
+                },
+                value: character_view().familiar_buff_key.enabled,
+                input_class: "w-6",
+            }
+            div { class: "grid grid-cols-2 xl:grid-cols-4 gap-4",
                 Buff {
                     label: "Sayram's Elixir",
                     disabled: character_view().id.is_none(),
@@ -695,6 +696,7 @@ fn SectionOthers(character_view: Memo<Character>, save_character: Callback<Chara
 #[component]
 fn KeyBindingConfigurationInput(
     label: &'static str,
+    #[props(default = String::default())] div_class: String,
     #[props(default = false)] optional: bool,
     disabled: bool,
     on_value: EventHandler<Option<KeyBindingConfiguration>>,
@@ -709,6 +711,7 @@ fn KeyBindingConfigurationInput(
     rsx! {
         KeyBindingInput {
             label,
+            div_class,
             optional,
             disabled,
             on_value: move |new_value: Option<KeyBinding>| {

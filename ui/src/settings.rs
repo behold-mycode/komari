@@ -413,9 +413,10 @@ fn SectionHotkeys(
         value: KeyBindingConfiguration,
     ) -> Element {
         rsx! {
-            div { class: "grid grid-cols-[140px_auto] gap-2",
+            div { class: "flex gap-2",
                 KeyBindingInput {
                     label,
+                    div_class: "flex-grow",
                     on_value: move |new_value: Option<KeyBinding>| {
                         on_value(KeyBindingConfiguration {
                             key: new_value.expect("not optional"),
