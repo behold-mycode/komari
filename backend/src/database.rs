@@ -8,7 +8,8 @@ use anyhow::Result;
 use opencv::core::Rect;
 use platforms::windows::KeyKind;
 use rusqlite::{Connection, Params, Statement, types::Null};
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{Deserialize, Deserializer, Serialize, de::DeserializeOwned};
+use serde_json::Value;
 use strum::{Display, EnumIter, EnumString};
 
 use crate::pathing;
@@ -499,16 +500,20 @@ pub enum RotationMode {
 impl_identifiable!(Character);
 
 #[derive(PartialEq, Clone, Debug, Default, Serialize, Deserialize)]
-#[serde(default)]
 pub struct Minimap {
     #[serde(skip_serializing)]
     pub id: Option<i64>,
     pub name: String,
     pub width: i32,
     pub height: i32,
+    #[serde(default)]
+    #[serde(deserialize_with = "deserialize_with_ok_or_default")]
     pub rotation_mode: RotationMode,
+    #[serde(default)]
     pub rotation_ping_pong_bound: Bound,
+    #[serde(default)]
     pub rotation_auto_mob_bound: Bound,
+    #[serde(default)]
     pub rotation_mobbing_key: MobbingKey,
     pub platforms: Vec<Platform>,
     pub rune_platforms_pathing: bool,
@@ -521,6 +526,15 @@ pub struct Minimap {
 }
 
 impl_identifiable!(Minimap);
+
+fn deserialize_with_ok_or_default<'a, T, D>(deserializer: D) -> Result<T, D::Error>
+where
+    T: Deserialize<'a> + Default,
+    D: Deserializer<'a>,
+{
+    let value = Value::deserialize(deserializer)?;
+    Ok(T::deserialize(value).unwrap_or_default())
+}
 
 #[derive(Clone, Copy, PartialEq, Debug, Default, Serialize, Deserialize)]
 pub struct Platform {
