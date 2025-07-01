@@ -481,18 +481,6 @@ impl Default for MobbingKey {
     }
 }
 
-#[derive(Clone, Copy, Default, PartialEq, Debug, Serialize, Deserialize)]
-pub struct PingPong {
-    pub bound: Bound,
-    pub key: MobbingKey,
-}
-
-#[derive(Clone, Copy, Default, PartialEq, Debug, Serialize, Deserialize)]
-pub struct AutoMobbing {
-    pub bound: Bound,
-    pub key: MobbingKey,
-}
-
 fn key_count_default() -> u32 {
     1
 }
@@ -504,8 +492,8 @@ pub enum RotationMode {
     StartToEnd,
     #[default]
     StartToEndThenReverse,
-    AutoMobbing(AutoMobbing),
-    PingPong(PingPong),
+    AutoMobbing,
+    PingPong,
 }
 
 impl_identifiable!(Character);
@@ -519,6 +507,9 @@ pub struct Minimap {
     pub width: i32,
     pub height: i32,
     pub rotation_mode: RotationMode,
+    pub rotation_ping_pong_bound: Bound,
+    pub rotation_auto_mob_bound: Bound,
+    pub rotation_mobbing_key: MobbingKey,
     pub platforms: Vec<Platform>,
     pub rune_platforms_pathing: bool,
     pub rune_platforms_pathing_up_jump_only: bool,

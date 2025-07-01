@@ -29,7 +29,7 @@ use crate::mat::OwnedMat;
 use crate::{
     Action, ActionCondition, ActionConfigurationCondition, ActionKey, CaptureMode, Character,
     GameState, KeyBinding, KeyBindingConfiguration, Minimap as MinimapData, PotionMode,
-    RequestHandler, Settings,
+    RequestHandler, RotationMode, RotatorMode, Settings,
     bridge::{ImageCapture, ImageCaptureKind, KeySenderMethod},
     buff::{BuffKind, BuffState},
     context::Context,
@@ -156,9 +156,19 @@ impl DefaultRequestHandler<'_> {
         let mode = self
             .minimap
             .data()
-            .map(|minimap| minimap.rotation_mode)
-            .unwrap_or_default()
-            .into();
+            .map(|minimap| match minimap.rotation_mode {
+                RotationMode::StartToEnd => RotatorMode::StartToEnd,
+                RotationMode::StartToEndThenReverse => RotatorMode::StartToEndThenReverse,
+                RotationMode::AutoMobbing => RotatorMode::AutoMobbing(
+                    minimap.rotation_mobbing_key,
+                    minimap.rotation_auto_mob_bound,
+                ),
+                RotationMode::PingPong => RotatorMode::PingPong(
+                    minimap.rotation_mobbing_key,
+                    minimap.rotation_ping_pong_bound,
+                ),
+            })
+            .unwrap_or_default();
         let reset_on_erda = self
             .minimap
             .data()

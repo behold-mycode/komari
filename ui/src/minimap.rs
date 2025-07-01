@@ -1,9 +1,9 @@
 use std::time::Duration;
 
 use backend::{
-    Action, ActionKey, ActionMove, AutoMobbing, Minimap as MinimapData, PingPong, Position,
-    RotationMode, create_minimap, delete_minimap, game_state_receiver, query_minimaps,
-    redetect_minimap, rotate_actions, update_minimap, upsert_minimap,
+    Action, ActionKey, ActionMove, Minimap as MinimapData, Position, RotationMode, create_minimap,
+    delete_minimap, game_state_receiver, query_minimaps, redetect_minimap, rotate_actions,
+    update_minimap, upsert_minimap,
 };
 use dioxus::{document::EvalError, prelude::*};
 use futures_util::StreamExt;
@@ -349,10 +349,11 @@ fn Canvas(
         };
         let bound_and_type = match minimap.rotation_mode {
             RotationMode::StartToEnd | RotationMode::StartToEndThenReverse => None,
-            RotationMode::AutoMobbing(AutoMobbing { bound, .. }) => {
-                Some((platforms_bound.unwrap_or(bound), "AutoMobbing"))
-            }
-            RotationMode::PingPong(PingPong { bound, .. }) => Some((bound, "PingPong")),
+            RotationMode::AutoMobbing => Some((
+                platforms_bound.unwrap_or(minimap.rotation_auto_mob_bound),
+                "AutoMobbing",
+            )),
+            RotationMode::PingPong => Some((minimap.rotation_ping_pong_bound, "PingPong")),
         };
         let actions = preset
             .and_then(|preset| minimap.actions.get(&preset).cloned())

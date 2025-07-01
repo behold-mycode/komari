@@ -12,12 +12,12 @@ use ordered_hash_map::OrderedHashMap;
 use rand::seq::IteratorRandom;
 
 use crate::{
-    ActionKeyDirection, ActionKeyWith, AutoMobbing, FamiliarRarity, KeyBinding, PanicMode,
-    Position, RotationMode, SwappableFamiliars,
+    ActionKeyDirection, ActionKeyWith, Bound, FamiliarRarity, KeyBinding, MobbingKey, PanicMode,
+    Position, SwappableFamiliars,
     array::Array,
     buff::{Buff, BuffKind},
     context::{Context, MS_PER_TICK},
-    database::{Action, ActionCondition, ActionKey, ActionMove, PingPong},
+    database::{Action, ActionCondition, ActionKey, ActionMove},
     minimap::Minimap,
     player::{
         GRAPPLING_THRESHOLD, PanicTo, PingPongDirection, Player, PlayerAction, PlayerActionAutoMob,
@@ -109,19 +109,8 @@ pub enum RotatorMode {
     StartToEnd,
     #[default]
     StartToEndThenReverse,
-    AutoMobbing(AutoMobbing),
-    PingPong(PingPong),
-}
-
-impl From<RotationMode> for RotatorMode {
-    fn from(mode: RotationMode) -> Self {
-        match mode {
-            RotationMode::StartToEnd => RotatorMode::StartToEnd,
-            RotationMode::StartToEndThenReverse => RotatorMode::StartToEndThenReverse,
-            RotationMode::AutoMobbing(auto_mobbing) => RotatorMode::AutoMobbing(auto_mobbing),
-            RotationMode::PingPong(ping_pong) => RotatorMode::PingPong(ping_pong),
-        }
-    }
+    AutoMobbing(MobbingKey, Bound),
+    PingPong(MobbingKey, Bound),
 }
 
 #[derive(Default, Debug)]
@@ -208,7 +197,7 @@ impl Rotator {
                     );
                 }
                 ActionCondition::Any => {
-                    if matches!(self.normal_rotate_mode, RotatorMode::AutoMobbing(_)) {
+                    if matches!(self.normal_rotate_mode, RotatorMode::AutoMobbing(_, _)) {
                         continue;
                     }
                     self.normal_actions
@@ -295,11 +284,11 @@ impl Rotator {
             match self.normal_rotate_mode {
                 RotatorMode::StartToEnd => self.rotate_start_to_end(player),
                 RotatorMode::StartToEndThenReverse => self.rotate_start_to_end_then_reverse(player),
-                RotatorMode::AutoMobbing(auto_mobbing) => {
-                    self.rotate_auto_mobbing(context, player, auto_mobbing)
+                RotatorMode::AutoMobbing(key, bound) => {
+                    self.rotate_auto_mobbing(context, player, key, bound)
                 }
-                RotatorMode::PingPong(ping_pong) => {
-                    self.rotate_ping_pong(context, player, ping_pong)
+                RotatorMode::PingPong(key, bound) => {
+                    self.rotate_ping_pong(context, player, key, bound)
                 }
             }
         }
@@ -519,7 +508,8 @@ impl Rotator {
         &mut self,
         context: &Context,
         player: &mut PlayerState,
-        auto_mobbing: AutoMobbing,
+        key: MobbingKey,
+        bound: Bound,
     ) {
         debug_assert!(!player.has_normal_action() && !player.has_priority_action());
         let Minimap::Idle(idle) = context.minimap else {
@@ -528,7 +518,6 @@ impl Rotator {
         let Some(pos) = player.last_known_pos else {
             return;
         };
-        let AutoMobbing { bound, key } = auto_mobbing;
         let bound = if player.config.auto_mob_platforms_bound {
             idle.platforms_bound.unwrap_or(bound.into())
         } else {
@@ -588,7 +577,8 @@ impl Rotator {
         &mut self,
         context: &Context,
         player: &mut PlayerState,
-        ping_pong: PingPong,
+        key: MobbingKey,
+        bound: Bound,
     ) {
         debug_assert!(!player.has_normal_action() && !player.has_priority_action());
         let Minimap::Idle(idle) = context.minimap else {
@@ -597,7 +587,6 @@ impl Rotator {
         let Some(pos) = player.last_known_pos else {
             return;
         };
-        let PingPong { bound, key } = ping_pong;
 
         let bbox = idle.bbox;
         let dist_left = pos.x - bbox.x;
@@ -1371,10 +1360,8 @@ mod tests {
         rotator.rotate_ping_pong(
             &context,
             &mut player,
-            PingPong {
-                bound: Rect::new(20, 20, 80, 80).into(),
-                ..Default::default()
-            },
+            MobbingKey::default(),
+            Rect::new(20, 20, 80, 80).into(),
         );
 
         assert_matches!(
@@ -1391,10 +1378,8 @@ mod tests {
         rotator.rotate_ping_pong(
             &context,
             &mut player,
-            PingPong {
-                bound: Rect::new(20, 20, 80, 80).into(),
-                ..Default::default()
-            },
+            MobbingKey::default(),
+            Rect::new(20, 20, 80, 80).into(),
         );
 
         assert_matches!(
