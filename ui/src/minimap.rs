@@ -1,14 +1,14 @@
 use std::time::Duration;
 
 use backend::{
-    Action, ActionKey, ActionMove, AutoMobbing, Minimap as MinimapData, PingPong, Position,
-    RotationMode, create_minimap, delete_map, game_state_receiver, query_maps, redetect_minimap,
-    rotate_actions, update_minimap, upsert_map,
+    Action, ActionKey, ActionMove, Minimap as MinimapData, Position, RotationMode, create_minimap,
+    delete_minimap, game_state_receiver, query_minimaps, redetect_minimap, rotate_actions,
+    update_minimap, upsert_minimap,
 };
 use dioxus::{document::EvalError, prelude::*};
 use futures_util::StreamExt;
 use serde::Serialize;
-use tokio::{task::spawn_blocking, time::sleep};
+use tokio::time::sleep;
 
 use crate::{
     AppState,
@@ -216,11 +216,7 @@ pub fn Minimap() -> Element {
     let mut minimap = use_context::<AppState>().minimap;
     let minimap_preset = use_context::<AppState>().minimap_preset;
     let position = use_context::<AppState>().position;
-    let mut minimaps = use_resource(|| async {
-        spawn_blocking(|| query_maps().expect("failed to query maps"))
-            .await
-            .unwrap()
-    });
+    let mut minimaps = use_resource(async || query_minimaps().await.unwrap_or_default());
     // Maps queried `minimaps` to names
     let minimap_names = use_memo(move || {
         minimaps()
@@ -247,35 +243,22 @@ pub fn Minimap() -> Element {
         while let Some(message) = rx.next().await {
             match message {
                 MinimapUpdate::Set => {
-                    if let Some(minimap) = minimap() {
-                        update_minimap(None, minimap).await;
-                    }
+                    update_minimap(None, minimap()).await;
                 }
                 MinimapUpdate::Create(name) => {
-                    let Some(mut new_minimap) = create_minimap(name).await else {
+                    let Some(new_minimap) = create_minimap(name).await else {
                         continue;
                     };
-                    let mut save_minimap = new_minimap.clone();
-                    let save_id = spawn_blocking(move || {
-                        upsert_map(&mut save_minimap).unwrap();
-                        save_minimap
-                            .id
-                            .expect("minimap id must be valid after creation")
-                    })
-                    .await
-                    .unwrap();
+                    let new_minimap = upsert_minimap(new_minimap).await;
 
-                    new_minimap.id = Some(save_id);
                     minimap.set(Some(new_minimap));
                     minimaps.restart();
+                    update_minimap(None, minimap()).await;
                 }
                 MinimapUpdate::Delete => {
                     if let Some(minimap) = minimap.take() {
-                        spawn_blocking(move || {
-                            delete_map(&minimap).expect("failed to delete minimap");
-                        })
-                        .await
-                        .unwrap();
+                        delete_minimap(minimap).await;
+                        update_minimap(None, None).await;
                         minimaps.restart();
                     }
                 }
@@ -326,7 +309,6 @@ pub fn Minimap() -> Element {
                         placeholder: "Create a map...",
                         on_create: move |name| {
                             coroutine.send(MinimapUpdate::Create(name));
-                            coroutine.send(MinimapUpdate::Set);
                         },
                         on_delete: move |_| {
                             coroutine.send(MinimapUpdate::Delete);
@@ -367,10 +349,11 @@ fn Canvas(
         };
         let bound_and_type = match minimap.rotation_mode {
             RotationMode::StartToEnd | RotationMode::StartToEndThenReverse => None,
-            RotationMode::AutoMobbing(AutoMobbing { bound, .. }) => {
-                Some((platforms_bound.unwrap_or(bound), "AutoMobbing"))
-            }
-            RotationMode::PingPong(PingPong { bound, .. }) => Some((bound, "PingPong")),
+            RotationMode::AutoMobbing => Some((
+                platforms_bound.unwrap_or(minimap.rotation_auto_mob_bound),
+                "AutoMobbing",
+            )),
+            RotationMode::PingPong => Some((minimap.rotation_ping_pong_bound, "PingPong")),
         };
         let actions = preset
             .and_then(|preset| minimap.actions.get(&preset).cloned())

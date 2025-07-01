@@ -9,9 +9,12 @@
 
 use std::sync::{LazyLock, Mutex};
 
-use tokio::sync::{
-    broadcast, mpsc,
-    oneshot::{self, Sender},
+use tokio::{
+    sync::{
+        broadcast, mpsc,
+        oneshot::{self, Sender},
+    },
+    task::spawn_blocking,
 };
 
 mod array;
@@ -38,12 +41,10 @@ pub use {
     context::init,
     database::{
         Action, ActionCondition, ActionConfiguration, ActionConfigurationCondition, ActionKey,
-        ActionKeyDirection, ActionKeyWith, ActionMove, AutoMobbing, Bound, CaptureMode, Character,
-        Class, FamiliarRarity, Familiars, InputMethod, KeyBinding, KeyBindingConfiguration,
-        LinkKeyBinding, Minimap, MobbingKey, Notifications, PanicMode, PingPong, Platform,
-        Position, PotionMode, RotationMode, Settings, SwappableFamiliars, delete_character,
-        delete_map, query_characters, query_maps, query_settings, upsert_character, upsert_map,
-        upsert_settings,
+        ActionKeyDirection, ActionKeyWith, ActionMove, Bound, CaptureMode, Character, Class,
+        FamiliarRarity, Familiars, InputMethod, KeyBinding, KeyBindingConfiguration,
+        LinkKeyBinding, Minimap, MobbingKey, Notifications, PanicMode, Platform, Position,
+        PotionMode, RotationMode, Settings, SwappableFamiliars,
     },
     pathing::MAX_PLATFORMS_COUNT,
     rotator::RotatorMode,
@@ -78,13 +79,13 @@ macro_rules! expect_value_variant {
     };
 }
 
-/// Represents request from UI
+/// Represents request from UI.
 #[derive(Debug)]
 enum Request {
     RotateActions(bool),
     CreateMinimap(String),
-    UpdateMinimap(Option<String>, Minimap),
-    UpdateCharacter(Character),
+    UpdateMinimap(Option<String>, Option<Minimap>),
+    UpdateCharacter(Option<Character>),
     UpdateSettings(Settings),
     RedetectMinimap,
     GameStateReceiver,
@@ -103,7 +104,7 @@ enum Request {
     TestSpinRune,
 }
 
-/// Represents response to UI [`Request`]
+/// Represents response to UI [`Request`].
 ///
 /// All internal (e.g. OpenCV) structs must be converted to either database structs
 /// or appropriate counterparts before passing to UI.
@@ -136,9 +137,9 @@ pub(crate) trait RequestHandler {
 
     fn on_create_minimap(&self, name: String) -> Option<Minimap>;
 
-    fn on_update_minimap(&mut self, preset: Option<String>, minimap: Minimap);
+    fn on_update_minimap(&mut self, preset: Option<String>, minimap: Option<Minimap>);
 
-    fn on_update_character(&mut self, character: Character);
+    fn on_update_character(&mut self, character: Option<Character>);
 
     fn on_update_settings(&mut self, settings: Settings);
 
@@ -189,6 +190,29 @@ pub async fn rotate_actions(halting: bool) {
     )
 }
 
+/// Queries settings from the database.
+pub async fn query_settings() -> Settings {
+    spawn_blocking(database::query_settings).await.unwrap()
+}
+
+/// Upserts settings to the database.
+pub async fn upsert_settings(mut settings: Settings) -> Settings {
+    spawn_blocking(move || {
+        database::upsert_settings(&mut settings).expect("failed to upsert settings");
+        settings
+    })
+    .await
+    .unwrap()
+}
+
+/// Queries minimaps from the database.
+pub async fn query_minimaps() -> Option<Vec<Minimap>> {
+    spawn_blocking(database::query_minimaps).await.unwrap().ok()
+}
+
+/// Creates a new minimap from the currently detected minimap.
+///
+/// This function does not insert the created minimap into the database.
 pub async fn create_minimap(name: String) -> Option<Minimap> {
     expect_value_variant!(
         request(Request::CreateMinimap(name)).await,
@@ -196,18 +220,76 @@ pub async fn create_minimap(name: String) -> Option<Minimap> {
     )
 }
 
-pub async fn update_minimap(preset: Option<String>, minimap: Minimap) {
+/// Upserts minimap to the database.
+///
+/// If `minimap` does not previously exist, a new one will be created and its `id` will
+/// be updated.
+///
+/// Returns the updated [`Minimap`].
+pub async fn upsert_minimap(mut minimap: Minimap) -> Minimap {
+    spawn_blocking(move || {
+        database::upsert_minimap(&mut minimap).expect("failed to upsert minimap");
+        minimap
+    })
+    .await
+    .unwrap()
+}
+
+/// Updates the current minimap used by the main game loop.
+pub async fn update_minimap(preset: Option<String>, minimap: Option<Minimap>) {
     expect_unit_variant!(
         request(Request::UpdateMinimap(preset, minimap)).await,
         Response::UpdateMinimap
     )
 }
 
-pub async fn update_character(character: Character) {
+/// Deletes `minimap` from the database.
+pub async fn delete_minimap(minimap: Minimap) {
+    spawn_blocking(move || {
+        database::delete_minimap(&minimap).expect("failed to delete minimap");
+    })
+    .await
+    .unwrap();
+}
+
+/// Queries characters from the database.
+pub async fn query_characters() -> Option<Vec<Character>> {
+    spawn_blocking(database::query_characters)
+        .await
+        .unwrap()
+        .ok()
+}
+
+/// Upserts character to the database.
+///
+/// If `character` does not previously exist, a new one will be created and its `id` will
+/// be updated.
+///
+/// Returns the updated [`Character`].
+pub async fn upsert_character(mut character: Character) -> Character {
+    spawn_blocking(move || {
+        database::upsert_character(&mut character).expect("failed to upsert character");
+        character
+    })
+    .await
+    .unwrap()
+}
+
+/// Updates the current character used by the main game loop.
+pub async fn update_character(character: Option<Character>) {
     expect_unit_variant!(
         request(Request::UpdateCharacter(character)).await,
         Response::UpdateCharacter
     )
+}
+
+/// Deletes `character` from the database.
+pub async fn delete_character(character: Character) {
+    spawn_blocking(move || {
+        database::delete_character(&character).expect("failed to delete character");
+    })
+    .await
+    .unwrap();
 }
 
 pub async fn update_settings(settings: Settings) {

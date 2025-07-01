@@ -29,7 +29,7 @@ use crate::mat::OwnedMat;
 use crate::{
     Action, ActionCondition, ActionConfigurationCondition, ActionKey, CaptureMode, Character,
     GameState, KeyBinding, KeyBindingConfiguration, Minimap as MinimapData, PotionMode,
-    RequestHandler, Settings,
+    RequestHandler, RotationMode, RotatorMode, Settings,
     bridge::{ImageCapture, ImageCaptureKind, KeySenderMethod},
     buff::{BuffKind, BuffState},
     context::Context,
@@ -153,29 +153,46 @@ impl DefaultRequestHandler<'_> {
     }
 
     fn update_rotator_actions(&mut self) {
-        let Some(character) = self.character else {
-            return;
-        };
         let mode = self
             .minimap
             .data()
-            .map(|minimap| minimap.rotation_mode)
-            .unwrap_or_default()
-            .into();
+            .map(|minimap| match minimap.rotation_mode {
+                RotationMode::StartToEnd => RotatorMode::StartToEnd,
+                RotationMode::StartToEndThenReverse => RotatorMode::StartToEndThenReverse,
+                RotationMode::AutoMobbing => RotatorMode::AutoMobbing(
+                    minimap.rotation_mobbing_key,
+                    minimap.rotation_auto_mob_bound,
+                ),
+                RotationMode::PingPong => RotatorMode::PingPong(
+                    minimap.rotation_mobbing_key,
+                    minimap.rotation_ping_pong_bound,
+                ),
+            })
+            .unwrap_or_default();
         let reset_on_erda = self
             .minimap
             .data()
             .map(|minimap| minimap.actions_any_reset_on_erda_condition)
             .unwrap_or_default();
-        let actions = config_actions(character)
-            .into_iter()
-            .chain(self.actions.iter().copied())
-            .collect::<Vec<_>>();
+        let actions = self
+            .character
+            .as_ref()
+            .map(|character| {
+                config_actions(character)
+                    .into_iter()
+                    .chain(self.actions.iter().copied())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
         let args = RotatorBuildArgs {
             mode,
             actions: actions.as_slice(),
             buffs: self.buffs,
-            familiar_essence_key: character.familiar_essence_key.key,
+            familiar_essence_key: self
+                .character
+                .as_ref()
+                .map(|character| character.familiar_essence_key.key)
+                .unwrap_or_default(),
             familiar_swappable_slots: self.settings.familiars.swappable_familiars,
             familiar_swappable_rarities: &self.settings.familiars.swappable_rarities,
             familiar_swap_check_millis: self.settings.familiars.swap_check_millis,
@@ -217,11 +234,16 @@ impl RequestHandler for DefaultRequestHandler<'_> {
         }
     }
 
-    fn on_update_minimap(&mut self, preset: Option<String>, minimap: MinimapData) {
+    fn on_update_minimap(&mut self, preset: Option<String>, minimap: Option<MinimapData>) {
         self.minimap.set_data(minimap);
-
-        let minimap = self.minimap.data().unwrap();
         self.player.reset();
+
+        let Some(minimap) = self.minimap.data() else {
+            *self.actions = Vec::new();
+            self.update_rotator_actions();
+            return;
+        };
+
         self.player.config.rune_platforms_pathing = minimap.rune_platforms_pathing;
         self.player.config.rune_platforms_pathing_up_jump_only =
             minimap.rune_platforms_pathing_up_jump_only;
@@ -235,8 +257,8 @@ impl RequestHandler for DefaultRequestHandler<'_> {
         self.update_rotator_actions();
     }
 
-    fn on_update_character(&mut self, character: Character) {
-        *self.character = Some(character);
+    fn on_update_character(&mut self, character: Option<Character>) {
+        *self.character = character;
 
         let Some(character) = self.character else {
             return;

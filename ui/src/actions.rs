@@ -7,14 +7,13 @@ use std::{
 };
 
 use backend::{
-    Action, ActionCondition, ActionKey, ActionKeyDirection, ActionKeyWith, ActionMove, AutoMobbing,
-    Bound, IntoEnumIterator, KeyBinding, LinkKeyBinding, Minimap, MobbingKey, PingPong, Platform,
-    Position, RotationMode, key_receiver, update_minimap, upsert_map,
+    Action, ActionCondition, ActionKey, ActionKeyDirection, ActionKeyWith, ActionMove, Bound,
+    IntoEnumIterator, KeyBinding, LinkKeyBinding, Minimap, MobbingKey, Platform, Position,
+    RotationMode, key_receiver, update_minimap, upsert_minimap,
 };
 use dioxus::prelude::*;
 use futures_util::StreamExt;
 use rand::distr::{Alphanumeric, SampleString};
-use tokio::task::spawn_blocking;
 
 use crate::{
     AppState,
@@ -30,20 +29,11 @@ const ITEM_BORDER_CLASS: &str = "border-r-2 border-gray-700";
 
 #[derive(Debug)]
 enum ActionUpdate {
-    SetPreset,
-    CreatePreset(String),
-    DeletePreset,
-    SaveMinimap,
-    EditMobbingKey(MobbingKey),
-    EditMobbingBound(Bound),
-    AddPlatform(Platform),
-    EditPlatform(Platform, usize),
-    DeletePlatform(usize),
-    Add(Action, ActionCondition),
-    Edit(Action, usize),
-    Delete(usize),
-    Move(usize, ActionCondition, bool),
-    Import(Vec<Action>),
+    Set,
+    Create(String),
+    Delete,
+    Update(Vec<Action>),
+    UpdateMinimap(Minimap),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -53,9 +43,16 @@ enum PopupInputKind {
     Platform(Platform, Option<usize>),
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(PartialEq, Clone, Copy, Debug)]
 enum ActionInputKind {
     Add(Action),
+    Edit(Action, usize),
+    PingPongOrAutoMobbing(MobbingKey),
+}
+
+#[derive(Debug)]
+enum ActionInputValueKind {
+    Add(Action, ActionCondition),
     Edit(Action, usize),
     PingPongOrAutoMobbing(MobbingKey),
 }
@@ -94,24 +91,19 @@ pub fn Actions() -> Element {
     // Handles async operations for action-related
     // TODO: Split into functions
     let coroutine = use_coroutine(move |mut rx: UnboundedReceiver<ActionUpdate>| async move {
-        let mut save_minimap = async move |current_minimap: Minimap| {
-            let mut save_minimap = current_minimap.clone();
-            spawn_blocking(move || {
-                upsert_map(&mut save_minimap).expect("failed to upsert minimap actions");
-            })
-            .await
-            .unwrap();
-            minimap.set(Some(current_minimap));
+        let mut save_minimap = async move |new_minimap: Minimap| {
+            let new_minimap = upsert_minimap(new_minimap).await;
+
+            minimap.set(Some(new_minimap));
+            update_minimap(minimap_preset(), minimap()).await;
         };
 
         while let Some(message) = rx.next().await {
             match message {
-                ActionUpdate::SetPreset => {
-                    if let Some(minimap) = minimap() {
-                        update_minimap(minimap_preset(), minimap).await;
-                    }
+                ActionUpdate::Set => {
+                    update_minimap(minimap_preset(), minimap()).await;
                 }
-                ActionUpdate::CreatePreset(preset) => {
+                ActionUpdate::Create(preset) => {
                     let Some(mut current_minimap) = minimap() else {
                         continue;
                     };
@@ -120,7 +112,7 @@ pub fn Actions() -> Element {
                         save_minimap(current_minimap).await;
                     }
                 }
-                ActionUpdate::DeletePreset => {
+                ActionUpdate::Delete => {
                     let Some(mut current_minimap) = minimap() else {
                         continue;
                     };
@@ -133,283 +125,98 @@ pub fn Actions() -> Element {
                         save_minimap(current_minimap).await;
                     }
                 }
-                ActionUpdate::SaveMinimap => {
-                    if let Some(minimap) = minimap() {
-                        save_minimap(minimap).await;
-                    }
-                }
-                ActionUpdate::EditMobbingKey(key) => {
-                    let Some(mut current_minimap) = minimap() else {
-                        continue;
-                    };
-                    let mode = match current_minimap.rotation_mode {
-                        RotationMode::StartToEnd | RotationMode::StartToEndThenReverse => continue,
-                        RotationMode::AutoMobbing(mobbing) => {
-                            RotationMode::AutoMobbing(AutoMobbing { key, ..mobbing })
-                        }
-                        RotationMode::PingPong(ping_pong) => {
-                            RotationMode::PingPong(PingPong { key, ..ping_pong })
-                        }
-                    };
-
-                    current_minimap.rotation_mode = mode;
-                    save_minimap(current_minimap).await;
-                }
-                ActionUpdate::EditMobbingBound(bound) => {
-                    let Some(mut current_minimap) = minimap() else {
-                        continue;
-                    };
-                    let mode = match current_minimap.rotation_mode {
-                        RotationMode::StartToEnd | RotationMode::StartToEndThenReverse => continue,
-                        RotationMode::AutoMobbing(mobbing) => {
-                            RotationMode::AutoMobbing(AutoMobbing { bound, ..mobbing })
-                        }
-                        RotationMode::PingPong(ping_pong) => {
-                            RotationMode::PingPong(PingPong { bound, ..ping_pong })
-                        }
-                    };
-
-                    current_minimap.rotation_mode = mode;
-                    save_minimap(current_minimap).await;
-                }
-                ActionUpdate::AddPlatform(platform) => {
-                    let Some(mut current_minimap) = minimap() else {
-                        continue;
-                    };
-
-                    current_minimap.platforms.push(platform);
-                    save_minimap(current_minimap).await;
-                }
-                ActionUpdate::EditPlatform(platform, index) => {
-                    let Some(mut current_minimap) = minimap() else {
-                        continue;
-                    };
-
-                    *current_minimap.platforms.get_mut(index).unwrap() = platform;
-                    save_minimap(current_minimap).await;
-                }
-                ActionUpdate::DeletePlatform(index) => {
-                    let Some(mut current_minimap) = minimap() else {
-                        continue;
-                    };
-
-                    current_minimap.platforms.remove(index);
-                    save_minimap(current_minimap).await;
-                }
-                ActionUpdate::Add(action, condition) => {
+                ActionUpdate::Update(actions) => {
                     let Some(mut current_minimap) = minimap() else {
                         continue;
                     };
                     let Some(preset) = minimap_preset() else {
                         continue;
                     };
-                    let Some(actions) = current_minimap.actions.get_mut(&preset) else {
-                        continue;
-                    };
-                    let index = if matches!(action.condition(), ActionCondition::Linked) {
-                        find_last_linked_action_index(actions, condition)
-                            .map(|index| index + 1)
-                            .unwrap_or(actions.len())
-                    } else {
-                        actions.len()
-                    };
 
-                    actions.insert(index, action);
+                    current_minimap.actions.insert(preset, actions);
                     save_minimap(current_minimap).await;
                 }
-                ActionUpdate::Edit(action, index) => {
-                    let Some(mut current_minimap) = minimap() else {
-                        continue;
-                    };
-                    let Some(preset) = minimap_preset() else {
-                        continue;
-                    };
-                    let Some(actions) = current_minimap.actions.get_mut(&preset) else {
-                        continue;
-                    };
-
-                    actions[index] = action;
-                    save_minimap(current_minimap).await;
-                }
-                ActionUpdate::Delete(index) => {
-                    let Some(mut current_minimap) = minimap() else {
-                        continue;
-                    };
-                    let Some(preset) = minimap_preset() else {
-                        continue;
-                    };
-                    let Some(actions) = current_minimap.actions.get_mut(&preset) else {
-                        continue;
-                    };
-                    let action = actions[index];
-
-                    // Replaces the first linked action to this `action` condition
-                    // TODO: Maybe replace find_linked_action_range with a simple lookahead
-                    if !matches!(action.condition(), ActionCondition::Linked)
-                        && find_linked_action_range(actions, index).is_some()
-                    {
-                        actions[index + 1] = actions[index + 1].with_condition(action.condition());
-                    }
-                    actions.remove(index);
-                    save_minimap(current_minimap).await;
-                }
-                ActionUpdate::Move(index, condition, up) => {
-                    let Some(mut current_minimap) = minimap() else {
-                        continue;
-                    };
-                    let Some(preset) = minimap_preset() else {
-                        continue;
-                    };
-                    let Some(actions) = current_minimap.actions.get_mut(&preset) else {
-                        continue;
-                    };
-                    let filtered = filter_actions(actions.clone(), condition);
-                    if (up && index <= filtered.first().expect("cannot be empty").1)
-                        || (!up && index >= filtered.last().expect("cannot be empty").1)
-                    {
-                        continue;
-                    }
-
-                    // Finds the action index of `filtered` before or after `index`
-                    let filtered_index = filtered
-                        .iter()
-                        .enumerate()
-                        .find_map(|(filtered_index, (_, actions_index))| {
-                            if *actions_index == index {
-                                if up {
-                                    Some(filtered_index - 1)
-                                } else {
-                                    Some(filtered_index + 1)
-                                }
-                            } else {
-                                None
-                            }
-                        })
-                        .expect("must be valid index");
-                    let filtered_condition = filtered[filtered_index].0.condition();
-                    let action_condition = actions[index].condition();
-                    match (action_condition, filtered_condition) {
-                        // Simple case - swapping two linked actions
-                        (ActionCondition::Linked, ActionCondition::Linked) => {
-                            actions.swap(index, filtered[filtered_index].1);
-                            save_minimap(current_minimap).await;
-                            continue;
-                        }
-                        // Disallows moving up/down if `index` is a linked action and
-                        // `filtered_index` is a non-linked action
-                        (ActionCondition::Linked, _) => continue,
-                        _ => (),
-                    }
-
-                    // Finds the first non-linked action index of `filtered` before or after `index`
-                    let mut filtered_non_linked_index = filtered_index;
-                    while (up && filtered_non_linked_index > 0)
-                        || (!up && filtered_non_linked_index < filtered.len() - 1)
-                    {
-                        let condition = filtered[filtered_non_linked_index].0.condition();
-                        if !matches!(condition, ActionCondition::Linked) {
-                            break;
-                        }
-                        if up {
-                            filtered_non_linked_index -= 1;
-                        } else {
-                            filtered_non_linked_index += 1;
-                        }
-                    }
-                    let condition = filtered[filtered_non_linked_index].0.condition();
-                    if matches!(condition, ActionCondition::Linked) {
-                        continue;
-                    }
-
-                    let actions_non_linked_index = filtered[filtered_non_linked_index].1;
-                    let first_range = find_linked_action_range(actions, actions_non_linked_index);
-                    let mut first_range = if let Some(range) = first_range {
-                        actions_non_linked_index..range.end
-                    } else {
-                        actions_non_linked_index..actions_non_linked_index + 1
-                    };
-
-                    let second_range = find_linked_action_range(actions, index);
-                    let mut second_range = if let Some(range) = second_range {
-                        index..range.end
-                    } else {
-                        index..index + 1
-                    };
-
-                    if !up {
-                        swap(&mut first_range, &mut second_range);
-                    }
-
-                    debug_assert!(
-                        first_range.end <= second_range.start
-                            || second_range.end <= first_range.start
-                    );
-                    let second_start = second_range.start;
-                    let second_actions = actions.drain(second_range).collect::<Vec<_>>();
-                    let first_actions = actions[first_range.clone()].to_vec();
-                    for action in first_actions.into_iter().rev() {
-                        actions.insert(second_start, action);
-                    }
-
-                    let first_start = first_range.start;
-                    let _ = actions.drain(first_range);
-                    for action in second_actions.into_iter().rev() {
-                        actions.insert(first_start, action);
-                    }
-
-                    save_minimap(current_minimap).await;
-                }
-                ActionUpdate::Import(import_actions) => {
-                    let Some(mut current_minimap) = minimap() else {
-                        continue;
-                    };
-                    let Some(preset) = minimap_preset() else {
-                        continue;
-                    };
-                    let Some(actions) = current_minimap.actions.get_mut(&preset) else {
-                        continue;
-                    };
-
-                    let mut i = 0;
-                    while i < import_actions.len() {
-                        let action = import_actions[i];
-                        if matches!(action.condition(), ActionCondition::Linked) {
-                            // Malformed
-                            i += 1;
-                            continue;
-                        }
-
-                        actions.push(action);
-                        if let Some(range) = find_linked_action_range(&import_actions, i) {
-                            actions.extend(import_actions[range.clone()].iter().copied());
-                            i += range.count();
-                        }
-                        i += 1;
-                    }
-
-                    save_minimap(current_minimap).await;
+                ActionUpdate::UpdateMinimap(new_minimap) => {
+                    save_minimap(new_minimap).await;
                 }
             }
         }
     });
-    let save_minimap = use_callback(move |new_minimap: Minimap| {
-        minimap.set(Some(new_minimap));
-        coroutine.send(ActionUpdate::SaveMinimap);
-        coroutine.send(ActionUpdate::SetPreset);
-    });
     let mut popup_input_kind = use_signal(|| None);
-    let actions_list_disabled = use_memo(move || minimap().is_none() || minimap_preset().is_none());
+
+    // Add/edit action callbacks
+    let add_action = use_callback(move |(action, condition): (Action, ActionCondition)| {
+        let mut actions = minimap_preset_actions();
+        let index = if matches!(action.condition(), ActionCondition::Linked) {
+            find_last_linked_action_index(&actions, condition)
+                .map(|index| index + 1)
+                .unwrap_or(actions.len())
+        } else {
+            actions.len()
+        };
+
+        actions.insert(index, action);
+        coroutine.send(ActionUpdate::Update(actions));
+    });
+    let edit_action = use_callback(move |(new_action, index): (Action, usize)| {
+        let mut actions = minimap_preset_actions();
+        let Some(action) = actions.get_mut(index) else {
+            return;
+        };
+
+        *action = new_action;
+        coroutine.send(ActionUpdate::Update(actions));
+    });
+
+    // Edit mobbing key/bound callbacks
+    let edit_mobbing_key = use_callback(move |key| {
+        let mut minimap = minimap_view();
+
+        minimap.rotation_mobbing_key = key;
+        coroutine.send(ActionUpdate::UpdateMinimap(minimap));
+    });
+    let edit_mobbing_bound = use_callback(move |bound| {
+        let mut minimap = minimap_view();
+
+        match minimap.rotation_mode {
+            RotationMode::StartToEnd | RotationMode::StartToEndThenReverse => return,
+            RotationMode::AutoMobbing => {
+                minimap.rotation_auto_mob_bound = bound;
+            }
+            RotationMode::PingPong => {
+                minimap.rotation_ping_pong_bound = bound;
+            }
+        };
+        coroutine.send(ActionUpdate::UpdateMinimap(minimap));
+    });
+
+    //Add, edit platform callbacks
+    let add_platform = use_callback(move |platform| {
+        let mut minimap = minimap_view();
+
+        minimap.platforms.push(platform);
+        coroutine.send(ActionUpdate::UpdateMinimap(minimap));
+    });
+    let edit_platform = use_callback(move |(new_platform, index): (Platform, usize)| {
+        let mut minimap = minimap_view();
+        let Some(platform) = minimap.platforms.get_mut(index) else {
+            return;
+        };
+
+        *platform = new_platform;
+        coroutine.send(ActionUpdate::UpdateMinimap(minimap));
+    });
 
     // Sets a preset if there is not one
     use_effect(move || {
         if let Some(minimap) = minimap() {
             if !minimap.actions.is_empty() && minimap_preset.peek().is_none() {
                 minimap_preset.set(minimap.actions.into_keys().next());
-                coroutine.send(ActionUpdate::SetPreset);
+                coroutine.send(ActionUpdate::Set);
             }
         } else {
             minimap_preset.set(None);
-            coroutine.send(ActionUpdate::SetPreset);
+            coroutine.send(ActionUpdate::Set);
         }
     });
 
@@ -419,25 +226,43 @@ pub fn Actions() -> Element {
                 popup_input_kind,
                 minimap_view,
                 disabled: minimap().is_none(),
-                save_minimap,
             }
             SectionPlatforms {
                 popup_input_kind,
                 minimap_view,
                 disabled: minimap().is_none(),
-                save_minimap,
             }
             SectionActions {
                 popup_input_kind,
-                actions_list_disabled,
                 minimap_preset_actions,
+                disabled: minimap().is_none() || minimap_preset().is_none(),
             }
             SectionLegends {}
         }
         if let Some(kind) = popup_input_kind() {
             match kind {
-                PopupInputKind::Action(_) => rsx! {
-                    PopupActionInput { popup_input_kind, actions: minimap_preset_actions }
+                PopupInputKind::Action(kind) => rsx! {
+                    PopupActionInput {
+                        actions: minimap_preset_actions,
+                        on_cancel: move |_| {
+                            popup_input_kind.take();
+                        },
+                        on_value: move |kind| {
+                            popup_input_kind.take();
+                            match kind {
+                                ActionInputValueKind::Add(action, condition) => {
+                                    add_action((action, condition));
+                                }
+                                ActionInputValueKind::Edit(action, index) => {
+                                    edit_action((action, index));
+                                }
+                                ActionInputValueKind::PingPongOrAutoMobbing(key) => {
+                                    edit_mobbing_key(key);
+                                }
+                            }
+                        },
+                        kind,
+                    }
                 },
                 PopupInputKind::Bound(bound) => rsx! {
                     PopupBoundInput {
@@ -446,8 +271,7 @@ pub fn Actions() -> Element {
                         },
                         on_value: move |bound| {
                             popup_input_kind.take();
-                            coroutine.send(ActionUpdate::EditMobbingBound(bound));
-                            coroutine.send(ActionUpdate::SetPreset);
+                            edit_mobbing_bound(bound);
                         },
                         value: bound,
                     }
@@ -460,18 +284,17 @@ pub fn Actions() -> Element {
                                 popup_input_kind.take();
                             },
                             on_value: move |(mut platform, index): (Platform, Option<usize>)| {
+                                popup_input_kind.take();
                                 platform.x_end = if platform.x_end <= platform.x_start {
                                     platform.x_start + 1
                                 } else {
                                     platform.x_end
                                 };
-                                popup_input_kind.take();
                                 if let Some(index) = index {
-                                    coroutine.send(ActionUpdate::EditPlatform(platform, index));
+                                    edit_platform((platform, index));
                                 } else {
-                                    coroutine.send(ActionUpdate::AddPlatform(platform));
+                                    add_platform(platform);
                                 }
-                                coroutine.send(ActionUpdate::SetPreset);
                             },
                             value: platform,
                         }
@@ -486,16 +309,16 @@ pub fn Actions() -> Element {
                 disabled: minimap().is_none(),
                 placeholder: "Create an actions preset for the selected map...",
                 on_create: move |name| {
-                    coroutine.send(ActionUpdate::CreatePreset(name));
-                    coroutine.send(ActionUpdate::SetPreset);
+                    coroutine.send(ActionUpdate::Create(name));
+                    coroutine.send(ActionUpdate::Set);
                 },
                 on_delete: move |_| {
-                    coroutine.send(ActionUpdate::DeletePreset);
-                    coroutine.send(ActionUpdate::SetPreset);
+                    coroutine.send(ActionUpdate::Delete);
+                    coroutine.send(ActionUpdate::Set);
                 },
                 on_select: move |(_, preset)| {
                     minimap_preset.set(Some(preset));
-                    coroutine.send(ActionUpdate::SetPreset);
+                    coroutine.send(ActionUpdate::Set);
                 },
                 selected: minimap_preset_index(),
             }
@@ -522,13 +345,16 @@ fn SectionRotation(
     popup_input_kind: Signal<Option<PopupInputKind>>,
     minimap_view: Memo<Minimap>,
     disabled: bool,
-    save_minimap: EventHandler<Minimap>,
 ) -> Element {
     let update_mobbing_button_disabled = use_memo(move || {
         !matches!(
             minimap_view().rotation_mode,
-            RotationMode::AutoMobbing(_) | RotationMode::PingPong(_)
+            RotationMode::AutoMobbing | RotationMode::PingPong
         )
+    });
+    let coroutine = use_coroutine_handle::<ActionUpdate>();
+    let save_minimap = use_callback(move |new_minimap: Minimap| {
+        coroutine.send(ActionUpdate::UpdateMinimap(new_minimap));
     });
 
     rsx! {
@@ -551,12 +377,14 @@ fn SectionRotation(
                     kind: ButtonKind::Primary,
                     disabled: disabled | update_mobbing_button_disabled(),
                     on_click: move |_| {
-                        let key = match minimap_view.peek().rotation_mode {
+                        let minimap = minimap_view.peek();
+                        let key = match minimap.rotation_mode {
                             RotationMode::StartToEnd | RotationMode::StartToEndThenReverse => {
                                 unreachable!()
                             }
-                            RotationMode::AutoMobbing(auto_mobbing) => auto_mobbing.key,
-                            RotationMode::PingPong(ping_pong) => ping_pong.key,
+                            RotationMode::AutoMobbing | RotationMode::PingPong => {
+                                minimap.rotation_mobbing_key
+                            }
                         };
                         let kind = ActionInputKind::PingPongOrAutoMobbing(key);
                         popup_input_kind.set(Some(PopupInputKind::Action(kind)));
@@ -567,12 +395,13 @@ fn SectionRotation(
                     kind: ButtonKind::Primary,
                     disabled: disabled | update_mobbing_button_disabled(),
                     on_click: move |_| {
-                        let bound = match minimap_view.peek().rotation_mode {
+                        let minimap = minimap_view.peek();
+                        let bound = match minimap.rotation_mode {
                             RotationMode::StartToEnd | RotationMode::StartToEndThenReverse => {
                                 unreachable!()
                             }
-                            RotationMode::AutoMobbing(auto_mobbing) => auto_mobbing.bound,
-                            RotationMode::PingPong(ping_pong) => ping_pong.bound,
+                            RotationMode::AutoMobbing => minimap.rotation_auto_mob_bound,
+                            RotationMode::PingPong => minimap.rotation_ping_pong_bound,
                         };
                         popup_input_kind.set(Some(PopupInputKind::Bound(bound)));
                     },
@@ -598,7 +427,6 @@ fn SectionPlatforms(
     popup_input_kind: Signal<Option<PopupInputKind>>,
     minimap_view: Memo<Minimap>,
     disabled: bool,
-    save_minimap: EventHandler<Minimap>,
 ) -> Element {
     #[component]
     fn PlatformItem(
@@ -640,6 +468,23 @@ fn SectionPlatforms(
     let settings = use_context::<AppState>().settings;
     let position = use_context::<AppState>().position;
 
+    // TODO: Group with add_platform in Actions
+    let add_platform = use_callback(move |platform| {
+        let mut minimap = minimap_view();
+
+        minimap.platforms.push(platform);
+        coroutine.send(ActionUpdate::UpdateMinimap(minimap));
+    });
+    let delete_platform = use_callback(move |index| {
+        let mut minimap = minimap_view();
+
+        minimap.platforms.remove(index);
+        coroutine.send(ActionUpdate::UpdateMinimap(minimap));
+    });
+    let save_minimap = use_callback(move |new_minimap: Minimap| {
+        coroutine.send(ActionUpdate::UpdateMinimap(new_minimap));
+    });
+
     use_future(move || async move {
         let mut platform = Platform::default();
         let mut key_receiver = key_receiver().await;
@@ -669,8 +514,7 @@ fn SectionPlatforms(
             }
 
             if settings.platform_add_key.enabled && settings.platform_add_key.key == key {
-                coroutine.send(ActionUpdate::AddPlatform(platform));
-                coroutine.send(ActionUpdate::SetPreset);
+                add_platform(platform);
                 continue;
             }
         }
@@ -746,8 +590,7 @@ fn SectionPlatforms(
                         popup_input_kind.set(Some(PopupInputKind::Platform(platform, Some(index))));
                     },
                     on_item_delete: move |_| {
-                        coroutine.send(ActionUpdate::DeletePlatform(index));
-                        coroutine.send(ActionUpdate::SetPreset);
+                        delete_platform(index);
                     },
                 }
             }
@@ -788,8 +631,8 @@ fn SectionLegends() -> Element {
 #[component]
 fn SectionActions(
     popup_input_kind: Signal<Option<PopupInputKind>>,
-    actions_list_disabled: Memo<bool>,
     minimap_preset_actions: Memo<Vec<Action>>,
+    disabled: bool,
 ) -> Element {
     let coroutine = use_coroutine_handle::<ActionUpdate>();
     let mut popup_input = move |action_input_kind| {
@@ -835,18 +678,152 @@ fn SectionActions(
         document::eval(js.as_str());
     });
     let import_actions = use_callback(move |files| {
+        let mut actions = minimap_preset_actions();
+
         for file in files {
             let Ok(file) = File::open(file) else {
                 continue;
             };
             let reader = BufReader::new(file);
-            let Ok(actions) = serde_json::from_reader::<_, Vec<Action>>(reader) else {
+            let Ok(import_actions) = serde_json::from_reader::<_, Vec<Action>>(reader) else {
                 continue;
             };
-            coroutine.send(ActionUpdate::Import(actions));
+
+            let mut i = 0;
+            while i < import_actions.len() {
+                let action = import_actions[i];
+                if matches!(action.condition(), ActionCondition::Linked) {
+                    // Malformed
+                    i += 1;
+                    continue;
+                }
+
+                actions.push(action);
+                if let Some(range) = find_linked_action_range(&import_actions, i) {
+                    actions.extend(import_actions[range.clone()].iter().copied());
+                    i += range.count();
+                }
+                i += 1;
+            }
         }
-        coroutine.send(ActionUpdate::SetPreset);
+
+        coroutine.send(ActionUpdate::Update(actions));
     });
+
+    let delete_action = use_callback(move |index: usize| {
+        let mut actions = minimap_preset_actions();
+        let Some(condition) = actions.get(index).map(|action| action.condition()) else {
+            return;
+        };
+
+        // Replaces the first linked action to this `action` condition
+        // TODO: Maybe replace find_linked_action_range with a simple lookahead
+        if !matches!(condition, ActionCondition::Linked)
+            && find_linked_action_range(&actions, index).is_some()
+        {
+            actions[index + 1] = actions[index + 1].with_condition(condition);
+        }
+        actions.remove(index);
+        coroutine.send(ActionUpdate::Update(actions));
+    });
+    let move_action = use_callback(
+        move |(index, condition, up): (usize, ActionCondition, bool)| {
+            let mut actions = minimap_preset_actions();
+            let filtered = filter_actions(actions.clone(), condition);
+            if (up && index <= filtered.first().expect("cannot be empty").1)
+                || (!up && index >= filtered.last().expect("cannot be empty").1)
+            {
+                return;
+            }
+
+            // Finds the action index of `filtered` before or after `index`
+            let filtered_index = filtered
+                .iter()
+                .enumerate()
+                .find_map(|(filtered_index, (_, actions_index))| {
+                    if *actions_index == index {
+                        if up {
+                            Some(filtered_index - 1)
+                        } else {
+                            Some(filtered_index + 1)
+                        }
+                    } else {
+                        None
+                    }
+                })
+                .expect("must be valid index");
+            let filtered_condition = filtered[filtered_index].0.condition();
+            let action_condition = actions[index].condition();
+            match (action_condition, filtered_condition) {
+                // Simple case - swapping two linked actions
+                (ActionCondition::Linked, ActionCondition::Linked) => {
+                    actions.swap(index, filtered[filtered_index].1);
+                    coroutine.send(ActionUpdate::Update(actions));
+                    return;
+                }
+                // Disallows moving up/down if `index` is a linked action and
+                // `filtered_index` is a non-linked action
+                (ActionCondition::Linked, _) => return,
+                _ => (),
+            }
+
+            // Finds the first non-linked action index of `filtered` before or after `index`
+            let mut filtered_non_linked_index = filtered_index;
+            while (up && filtered_non_linked_index > 0)
+                || (!up && filtered_non_linked_index < filtered.len() - 1)
+            {
+                let condition = filtered[filtered_non_linked_index].0.condition();
+                if !matches!(condition, ActionCondition::Linked) {
+                    break;
+                }
+                if up {
+                    filtered_non_linked_index -= 1;
+                } else {
+                    filtered_non_linked_index += 1;
+                }
+            }
+            let condition = filtered[filtered_non_linked_index].0.condition();
+            if matches!(condition, ActionCondition::Linked) {
+                return;
+            }
+
+            let actions_non_linked_index = filtered[filtered_non_linked_index].1;
+            let first_range = find_linked_action_range(&actions, actions_non_linked_index);
+            let mut first_range = if let Some(range) = first_range {
+                actions_non_linked_index..range.end
+            } else {
+                actions_non_linked_index..actions_non_linked_index + 1
+            };
+
+            let second_range = find_linked_action_range(&actions, index);
+            let mut second_range = if let Some(range) = second_range {
+                index..range.end
+            } else {
+                index..index + 1
+            };
+
+            if !up {
+                swap(&mut first_range, &mut second_range);
+            }
+
+            debug_assert!(
+                first_range.end <= second_range.start || second_range.end <= first_range.start
+            );
+            let second_start = second_range.start;
+            let second_actions = actions.drain(second_range).collect::<Vec<_>>();
+            let first_actions = actions[first_range.clone()].to_vec();
+            for action in first_actions.into_iter().rev() {
+                actions.insert(second_start, action);
+            }
+
+            let first_start = first_range.start;
+            let _ = actions.drain(first_range);
+            for action in second_actions.into_iter().rev() {
+                actions.insert(first_start, action);
+            }
+            coroutine.send(ActionUpdate::Update(actions));
+        },
+    );
 
     rsx! {
         Section { name: "Normal actions",
@@ -858,15 +835,13 @@ fn SectionActions(
                     popup_input(ActionInputKind::Edit(action, index));
                 },
                 on_item_move: move |(index, condition, up)| {
-                    coroutine.send(ActionUpdate::Move(index, condition, up));
-                    coroutine.send(ActionUpdate::SetPreset);
+                    move_action((index, condition, up));
                 },
                 on_item_delete: move |index| {
-                    coroutine.send(ActionUpdate::Delete(index));
-                    coroutine.send(ActionUpdate::SetPreset);
+                    delete_action(index);
                 },
                 condition_filter: ActionCondition::Any,
-                disabled: actions_list_disabled(),
+                disabled,
                 actions: minimap_preset_actions(),
             }
         }
@@ -883,15 +858,13 @@ fn SectionActions(
                     popup_input(ActionInputKind::Edit(action, index));
                 },
                 on_item_move: move |(index, condition, up)| {
-                    coroutine.send(ActionUpdate::Move(index, condition, up));
-                    coroutine.send(ActionUpdate::SetPreset);
+                    move_action((index, condition, up));
                 },
                 on_item_delete: move |index| {
-                    coroutine.send(ActionUpdate::Delete(index));
-                    coroutine.send(ActionUpdate::SetPreset);
+                    delete_action(index);
                 },
                 condition_filter: ActionCondition::ErdaShowerOffCooldown,
-                disabled: actions_list_disabled(),
+                disabled,
                 actions: minimap_preset_actions(),
             }
         }
@@ -908,15 +881,13 @@ fn SectionActions(
                     popup_input(ActionInputKind::Edit(action, index));
                 },
                 on_item_move: move |(index, condition, up)| {
-                    coroutine.send(ActionUpdate::Move(index, condition, up));
-                    coroutine.send(ActionUpdate::SetPreset);
+                    move_action((index, condition, up));
                 },
                 on_item_delete: move |index| {
-                    coroutine.send(ActionUpdate::Delete(index));
-                    coroutine.send(ActionUpdate::SetPreset);
+                    delete_action(index);
                 },
                 condition_filter: ActionCondition::EveryMillis(0),
-                disabled: actions_list_disabled(),
+                disabled,
                 actions: minimap_preset_actions(),
             }
         }
@@ -928,7 +899,7 @@ fn SectionActions(
                         class: "w-full",
                         text: "Export",
                         kind: ButtonKind::Primary,
-                        disabled: actions_list_disabled(),
+                        disabled,
                         on_click: move |_| {
                             export(());
                         },
@@ -951,7 +922,7 @@ fn SectionActions(
                         class: "w-full",
                         text: "Import",
                         kind: ButtonKind::Primary,
-                        disabled: actions_list_disabled(),
+                        disabled,
                         on_click: move |_| {
                             import(());
                         },
@@ -1129,160 +1100,113 @@ fn PopupBoundInput(
     }
 }
 
-// TODO: Move popup_input_kind out and replace with callbacks
 #[component]
 fn PopupActionInput(
-    popup_input_kind: Signal<Option<PopupInputKind>>,
     actions: ReadOnlySignal<Vec<Action>>,
+    on_cancel: EventHandler,
+    on_value: EventHandler<ActionInputValueKind>,
+    kind: ActionInputKind,
 ) -> Element {
-    #[derive(PartialEq, Clone, Debug)]
-    struct State {
-        action: Action,
-        modifying: bool,
-        switchable: bool,
-        section_text: String,
-        can_create_linked_action: bool,
-    }
+    let (action, index) = match kind {
+        ActionInputKind::PingPongOrAutoMobbing(key) => {
+            let key = ActionKey {
+                key: key.key,
+                link_key: key.link_key,
+                count: key.count,
+                with: key.with,
+                wait_before_use_millis: key.wait_before_millis,
+                wait_before_use_millis_random_range: key.wait_before_millis_random_range,
+                wait_after_use_millis: key.wait_after_millis,
+                wait_after_use_millis_random_range: key.wait_after_millis_random_range,
+                ..ActionKey::default()
+            };
+            let action = Action::Key(key);
 
-    let state = use_memo(move || {
-        popup_input_kind()
-            .map(|kind| match kind {
-                PopupInputKind::Action(kind) => kind,
-                PopupInputKind::Bound(_) | PopupInputKind::Platform(_, _) => unreachable!(),
-            })
-            .map(|kind| {
-                let (action, index) = match kind {
-                    ActionInputKind::PingPongOrAutoMobbing(key) => {
-                        let key = ActionKey {
-                            key: key.key,
-                            link_key: key.link_key,
-                            count: key.count,
-                            with: key.with,
-                            wait_before_use_millis: key.wait_before_millis,
-                            wait_before_use_millis_random_range: key
-                                .wait_before_millis_random_range,
-                            wait_after_use_millis: key.wait_after_millis,
-                            wait_after_use_millis_random_range: key.wait_after_millis_random_range,
-                            ..ActionKey::default()
-                        };
-                        let action = Action::Key(key);
+            (action, None)
+        }
+        ActionInputKind::Add(action) => (action, None),
+        ActionInputKind::Edit(action, index) => (action, Some(index)),
+    };
+    let switchable = !matches!(kind, ActionInputKind::PingPongOrAutoMobbing(_));
+    let modifying = matches!(
+        kind,
+        ActionInputKind::Edit(_, _) | ActionInputKind::PingPongOrAutoMobbing(_)
+    );
+    let can_create_linked_action = match kind {
+        ActionInputKind::Add(_) | ActionInputKind::Edit(_, _) => match action.condition() {
+            ActionCondition::EveryMillis(_)
+            | ActionCondition::ErdaShowerOffCooldown
+            | ActionCondition::Any => {
+                let actions = actions();
+                let filtered = filter_actions(actions, action.condition());
+                let is_not_empty = !filtered.is_empty();
+                let first_index = filtered.into_iter().next().map(|first| first.1);
 
-                        (action, None)
-                    }
-                    ActionInputKind::Add(action) => (action, None),
-                    ActionInputKind::Edit(action, index) => (action, Some(index)),
-                };
-                let switchable = !matches!(kind, ActionInputKind::PingPongOrAutoMobbing(_));
-                let modifying = matches!(
-                    kind,
-                    ActionInputKind::Edit(_, _) | ActionInputKind::PingPongOrAutoMobbing(_)
-                );
-                let can_create_linked_action = match kind {
-                    ActionInputKind::Add(_) | ActionInputKind::Edit(_, _) => {
-                        match action.condition() {
-                            ActionCondition::EveryMillis(_)
-                            | ActionCondition::ErdaShowerOffCooldown
-                            | ActionCondition::Any => {
-                                let actions = actions();
-                                let filtered = filter_actions(actions, action.condition());
-                                let is_not_empty = !filtered.is_empty();
-                                let first_index = filtered.into_iter().next().map(|first| first.1);
-
-                                is_not_empty && first_index != index
-                            }
-                            ActionCondition::Linked => false,
-                        }
-                    }
-                    ActionInputKind::PingPongOrAutoMobbing(_) => false,
-                };
-                let section_text = match kind {
-                    ActionInputKind::Add(_) | ActionInputKind::Edit(_, _) => {
-                        let name = match action.condition() {
-                            backend::ActionCondition::Any => "normal",
-                            backend::ActionCondition::EveryMillis(_) => "every milliseconds",
-                            backend::ActionCondition::ErdaShowerOffCooldown => {
-                                "Erda Shower off cooldown"
-                            }
-                            backend::ActionCondition::Linked => "linked",
-                        };
-                        if modifying {
-                            format!("Modify a {name} action")
-                        } else {
-                            format!("Add a new {name} action")
-                        }
-                    }
-                    ActionInputKind::PingPongOrAutoMobbing(_) => "Modify mobbing skill".to_string(),
-                };
-
-                State {
-                    action,
-                    switchable,
-                    modifying,
-                    section_text,
-                    can_create_linked_action,
-                }
-            })
-    });
-    let coroutine = use_coroutine_handle::<ActionUpdate>();
+                is_not_empty && first_index != index
+            }
+            ActionCondition::Linked => false,
+        },
+        ActionInputKind::PingPongOrAutoMobbing(_) => false,
+    };
+    let section_text = match kind {
+        ActionInputKind::Add(_) | ActionInputKind::Edit(_, _) => {
+            let name = match action.condition() {
+                backend::ActionCondition::Any => "normal",
+                backend::ActionCondition::EveryMillis(_) => "every milliseconds",
+                backend::ActionCondition::ErdaShowerOffCooldown => "Erda Shower off cooldown",
+                backend::ActionCondition::Linked => "linked",
+            };
+            if modifying {
+                format!("Modify a {name} action")
+            } else {
+                format!("Add a new {name} action")
+            }
+        }
+        ActionInputKind::PingPongOrAutoMobbing(_) => "Modify mobbing skill".to_string(),
+    };
 
     rsx! {
-        if let Some(
-            State { action, switchable, modifying, section_text, can_create_linked_action },
-        ) = state()
-        {
-            div { class: "p-8 w-full h-full absolute inset-0 z-1 bg-gray-950/80",
-                ActionInput {
-                    section_text,
-                    switchable,
-                    modifying,
-                    can_create_linked_action,
-                    can_have_position: switchable,
-                    can_have_direction: switchable,
-                    on_cancel: move |_| {
-                        popup_input_kind.set(None);
-                    },
-                    on_value: move |(action, condition)| {
-                        match popup_input_kind
-                            .take()
-                            .map(|kind| match kind {
-                                PopupInputKind::Action(kind) => kind,
-                                PopupInputKind::Bound(_) => unreachable!(),
-                                PopupInputKind::Platform(_, _) => unreachable!(),
-                            })
-                            .expect("input kind must already be set")
-                        {
-                            ActionInputKind::Add(_) => {
-                                coroutine.send(ActionUpdate::Add(action, condition));
-                            }
-                            ActionInputKind::Edit(_, index) => {
-                                coroutine.send(ActionUpdate::Edit(action, index));
-                            }
-                            ActionInputKind::PingPongOrAutoMobbing(_) => {
-                                let action = match action {
-                                    Action::Move(_) => unreachable!(),
-                                    Action::Key(action) => action,
-                                };
-                                coroutine
-                                    .send(
-                                        ActionUpdate::EditMobbingKey(MobbingKey {
-                                            key: action.key,
-                                            link_key: action.link_key,
-                                            count: action.count,
-                                            with: action.with,
-                                            wait_before_millis: action.wait_before_use_millis,
-                                            wait_before_millis_random_range: action
-                                                .wait_before_use_millis_random_range,
-                                            wait_after_millis: action.wait_after_use_millis,
-                                            wait_after_millis_random_range: action
-                                                .wait_after_use_millis_random_range,
-                                        }),
-                                    );
-                            }
+        div { class: "p-8 w-full h-full absolute inset-0 z-1 bg-gray-950/80",
+            ActionInput {
+                section_text,
+                switchable,
+                modifying,
+                can_create_linked_action,
+                can_have_position: switchable,
+                can_have_direction: switchable,
+                on_cancel: move |_| {
+                    on_cancel(());
+                },
+                on_value: move |(action, condition)| {
+                    match kind {
+                        ActionInputKind::Add(_) => {
+                            on_value(ActionInputValueKind::Add(action, condition));
                         }
-                        coroutine.send(ActionUpdate::SetPreset);
-                    },
-                    value: action,
-                }
+                        ActionInputKind::Edit(_, index) => {
+                            on_value(ActionInputValueKind::Edit(action, index));
+                        }
+                        ActionInputKind::PingPongOrAutoMobbing(_) => {
+                            let action = match action {
+                                Action::Move(_) => unreachable!(),
+                                Action::Key(action) => action,
+                            };
+                            let key = MobbingKey {
+                                key: action.key,
+                                link_key: action.link_key,
+                                count: action.count,
+                                with: action.with,
+                                wait_before_millis: action.wait_before_use_millis,
+                                wait_before_millis_random_range: action
+                                    .wait_before_use_millis_random_range,
+                                wait_after_millis: action.wait_after_use_millis,
+                                wait_after_millis_random_range: action
+                                    .wait_after_use_millis_random_range,
+                            };
+                            on_value(ActionInputValueKind::PingPongOrAutoMobbing(key));
+                        }
+                    }
+                },
+                value: action,
             }
         }
     }

@@ -33,8 +33,6 @@ mod settings;
 const TAILWIND_CSS: Asset = asset!("public/tailwind.css");
 const AUTO_NUMERIC_JS: Asset = asset!("assets/autoNumeric.min.js");
 
-// TODO: Fix spaghetti UI
-// TODO: I give up on UI, it is whatever
 fn main() {
     let level = if cfg!(debug_assertions) {
         LevelFilter::Debug

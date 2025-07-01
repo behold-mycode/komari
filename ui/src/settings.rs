@@ -8,7 +8,6 @@ use backend::{
 };
 use dioxus::prelude::*;
 use futures_util::StreamExt;
-use tokio::task::spawn_blocking;
 
 use crate::{
     AppState,
@@ -20,7 +19,7 @@ use crate::{
 #[derive(Debug)]
 enum SettingsUpdate {
     Set,
-    Save,
+    Update(SettingsData),
 }
 
 #[component]
@@ -34,30 +33,24 @@ pub fn Settings() -> Element {
             while let Some(message) = rx.next().await {
                 match message {
                     SettingsUpdate::Set => {
-                        update_settings(settings().expect("settings must be already set")).await;
+                        update_settings(settings().expect("has value")).await;
                     }
-                    SettingsUpdate::Save => {
-                        let mut settings = settings().expect("settings must be already set");
-
-                        spawn_blocking(move || {
-                            upsert_settings(&mut settings).unwrap();
-                        })
-                        .await
-                        .unwrap();
+                    SettingsUpdate::Update(new_settings) => {
+                        settings.set(Some(upsert_settings(new_settings).await));
+                        update_settings(settings().expect("has value")).await;
                     }
                 }
             }
         },
     );
     let save_settings = use_callback(move |new_settings: SettingsData| {
-        settings.set(Some(new_settings));
-        coroutine.send(SettingsUpdate::Save);
-        coroutine.send(SettingsUpdate::Set);
+        coroutine.send(SettingsUpdate::Update(new_settings));
     });
 
     use_future(move || async move {
         if settings.peek().is_none() {
-            settings.set(Some(spawn_blocking(query_settings).await.unwrap()));
+            settings.set(Some(query_settings().await));
+            coroutine.send(SettingsUpdate::Set);
         }
     });
 

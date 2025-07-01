@@ -37,8 +37,8 @@ impl MinimapState {
         self.data.as_ref()
     }
 
-    pub fn set_data(&mut self, data: MinimapData) {
-        self.data = Some(data);
+    pub fn set_data(&mut self, data: Option<MinimapData>) {
+        self.data = data;
         self.update_platforms = true;
     }
 }
@@ -255,11 +255,15 @@ fn update_idle_context(
 
     // TODO: any better way to read persistent state in other contextual?
     if state.update_platforms {
-        let (updated_platforms, updated_bound) =
-            platforms_from_data(bbox, state.data.as_mut().unwrap());
+        if let Some(data) = state.data() {
+            let (updated_platforms, updated_bound) = platforms_from_data(bbox, data);
+            platforms = updated_platforms;
+            platforms_bound = updated_bound
+        } else {
+            platforms = Array::new();
+            platforms_bound = None;
+        }
         state.update_platforms = false;
-        platforms = updated_platforms;
-        platforms_bound = updated_bound
     }
 
     Some(Minimap::Idle(MinimapIdle {
