@@ -291,7 +291,7 @@ pub fn Minimap() -> Element {
     });
 
     rsx! {
-        div { class: "flex flex-col min-w-xs max-w-xs",
+        div { class: "flex flex-col flex-none w-xs xl:w-md",
             Canvas {
                 state,
                 minimap,

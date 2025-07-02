@@ -817,8 +817,8 @@ fn PopupActionConfigurationInput(
     };
 
     rsx! {
-        div { class: "p-8 w-full h-full absolute inset-0 z-1 bg-gray-950/80",
-            div { class: "bg-gray-900 h-full px-2",
+        div { class: "p-8 w-full h-full absolute inset-0 z-1 bg-gray-950/80 flex",
+            div { class: "bg-gray-900 max-w-xl w-full h-full max-h-120 px-2 m-auto",
                 div { class: "flex flex-col gap-2 relative h-full",
                     div { class: "flex flex-none items-center title-xs h-10", {section_text} }
                     ActionConfigurationInput {
@@ -1140,7 +1140,7 @@ fn ActionConfigurationItem(action: ActionConfiguration) -> Element {
     rsx! {
         div { class: "grid grid-cols-[100px_auto] h-6 paragraph-xs !text-gray-400 group-hover:bg-gray-900 {linked_action}",
             div { class: "{ITEM_BORDER_CLASS} {ITEM_TEXT_CLASS}", "{link_key}{key} × {count}" }
-            div { class: "pr-13 {ITEM_TEXT_CLASS}", "{millis}{wait_secs}{with}" }
+            div { class: "pl-1 pr-13 {ITEM_TEXT_CLASS}", "{millis}{wait_secs}{with}" }
         }
     }
 }
