@@ -7,6 +7,8 @@ use std::{env::current_exe, io::stdout, string::ToString, sync::LazyLock};
 use actions::Actions;
 use backend::{Character, Minimap as MinimapData, Settings as SettingsData};
 use characters::Characters;
+#[cfg(debug_assertions)]
+use debug::Debug;
 use dioxus::{
     desktop::{
         WindowBuilder,
@@ -24,6 +26,8 @@ use settings::Settings;
 mod actions;
 mod button;
 mod characters;
+#[cfg(debug_assertions)]
+mod debug;
 mod icons;
 mod inputs;
 mod minimap;
@@ -35,12 +39,16 @@ const AUTO_NUMERIC_JS: Asset = asset!("assets/autoNumeric.min.js");
 const TAB_ACTIONS: &str = "Actions";
 const TAB_CHARACTERS: &str = "Characters";
 const TAB_SETTINGS: &str = "Settings";
+#[cfg(debug_assertions)]
+const TAB_DEBUG: &str = "Debug";
 
 static TABS: LazyLock<Vec<String>> = LazyLock::new(|| {
     vec![
         TAB_ACTIONS.to_string(),
         TAB_CHARACTERS.to_string(),
         TAB_SETTINGS.to_string(),
+        #[cfg(debug_assertions)]
+        TAB_DEBUG.to_string(),
     ]
 });
 
@@ -142,6 +150,10 @@ fn App() -> Element {
                             },
                             TAB_SETTINGS => rsx! {
                                 Settings {}
+                            },
+                            #[cfg(debug_assertions)]
+                            TAB_DEBUG => rsx! {
+                                Debug {}
                             },
                             _ => unreachable!(),
                         }

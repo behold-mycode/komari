@@ -509,8 +509,7 @@ pub struct Minimap {
     pub name: String,
     pub width: i32,
     pub height: i32,
-    #[serde(default)]
-    #[serde(deserialize_with = "deserialize_with_ok_or_default")]
+    #[serde(default, deserialize_with = "deserialize_with_ok_or_default")]
     pub rotation_mode: RotationMode,
     #[serde(default)]
     pub rotation_ping_pong_bound: Bound,
@@ -984,7 +983,9 @@ pub fn delete_character(character: &Character) -> Result<()> {
 }
 
 pub fn query_minimaps() -> Result<Vec<Minimap>> {
-    query_from_table("maps")
+    query_from_table("maps").inspect_err(|err| {
+        println!("{err:?}");
+    })
 }
 
 pub fn upsert_minimap(map: &mut Minimap) -> Result<()> {
