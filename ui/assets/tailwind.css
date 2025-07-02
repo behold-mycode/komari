@@ -14,8 +14,8 @@ select,
 }
 
 ::picker(select)::-webkit-scrollbar {
-    width: 2px;
-    height: 2px;
+    width: 3px;
+    height: 3px;
 }
 
 ::picker(select)::-webkit-scrollbar-thumb {
@@ -31,8 +31,23 @@ option::checkmark {
 html,
 body,
 #main {
-	overflow-x: hidden;
+	overflow-x: auto;
+	overflow-y: auto;
 	height: 100%;
+    background: var(--color-gray-950);
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+#main::-webkit-scrollbar {
+    width: 3px;
+    height: 3px;
+}
+
+html::-webkit-scrollbar-thumb,
+body::-webkit-scrollbar-thumb,
+#main::-webkit-scrollbar-thumb {
+    background: var(--color-gray-500);
 }
 
 [type="checkbox"]:checked {
@@ -89,8 +104,8 @@ body,
 	}
 
 	.scrollbar::-webkit-scrollbar {
-		width: 2px;
-		height: 2px;
+		width: 3px;
+		height: 3px;
 	}
 
 	.scrollbar::-webkit-scrollbar-thumb {

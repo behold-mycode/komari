@@ -32,6 +32,17 @@ mod settings;
 
 const TAILWIND_CSS: Asset = asset!("public/tailwind.css");
 const AUTO_NUMERIC_JS: Asset = asset!("assets/autoNumeric.min.js");
+const TAB_ACTIONS: &str = "Actions";
+const TAB_CHARACTERS: &str = "Characters";
+const TAB_SETTINGS: &str = "Settings";
+
+static TABS: LazyLock<Vec<String>> = LazyLock::new(|| {
+    vec![
+        TAB_ACTIONS.to_string(),
+        TAB_CHARACTERS.to_string(),
+        TAB_SETTINGS.to_string(),
+    ]
+});
 
 fn main() {
     let level = if cfg!(debug_assertions) {
@@ -58,10 +69,9 @@ fn main() {
 
     backend::init();
     let window = WindowBuilder::new()
-        .with_inner_size(Size::Physical(PhysicalSize::new(1024, 480)))
-        .with_resizable(false)
-        .with_maximizable(false)
         .with_drag_and_drop(false)
+        .with_inner_size(Size::new(PhysicalSize::new(1024, 483)))
+        .with_min_inner_size(Size::new(PhysicalSize::new(320, 483)))
         .with_title(Alphanumeric.sample_string(&mut rand::rng(), 16));
     let cfg = dioxus::desktop::Config::default()
         .with_menu(None)
@@ -80,17 +90,6 @@ pub struct AppState {
 
 #[component]
 fn App() -> Element {
-    const TAB_ACTIONS: &str = "Actions";
-    const TAB_CHARACTERS: &str = "Characters";
-    const TAB_SETTINGS: &str = "Settings";
-    static TABS: LazyLock<Vec<String>> = LazyLock::new(|| {
-        vec![
-            TAB_ACTIONS.to_string(),
-            TAB_CHARACTERS.to_string(),
-            TAB_SETTINGS.to_string(),
-        ]
-    });
-
     let mut selected_tab = use_signal(|| TAB_CHARACTERS.to_string());
     let mut script_loaded = use_signal(|| false);
 
@@ -123,27 +122,29 @@ fn App() -> Element {
         document::Link { rel: "stylesheet", href: TAILWIND_CSS }
         document::Script { src: AUTO_NUMERIC_JS }
         if script_loaded() {
-            div { class: "flex min-w-5xl min-h-120 h-full bg-gray-950",
+            div { class: "flex min-w-3xl lg:min-w-5xl min-h-120 h-full",
                 Minimap {}
-                Tabs {
-                    tabs: TABS.clone(),
-                    on_select_tab: move |tab| {
-                        selected_tab.set(tab);
-                    },
-                    selected_tab: selected_tab(),
-                }
-                div { class: "relative w-full",
-                    match selected_tab().as_str() {
-                        TAB_ACTIONS => rsx! {
-                            Actions {}
+                div { class: "flex-grow flex flex-col lg:flex-row",
+                    Tabs {
+                        tabs: TABS.clone(),
+                        on_select_tab: move |tab| {
+                            selected_tab.set(tab);
                         },
-                        TAB_CHARACTERS => rsx! {
-                            Characters {}
-                        },
-                        TAB_SETTINGS => rsx! {
-                            Settings {}
-                        },
-                        _ => unreachable!(),
+                        selected_tab: selected_tab(),
+                    }
+                    div { class: "relative w-full overflow-x-hidden overflow-y-auto pl-2 lg:pl-0",
+                        match selected_tab().as_str() {
+                            TAB_ACTIONS => rsx! {
+                                Actions {}
+                            },
+                            TAB_CHARACTERS => rsx! {
+                                Characters {}
+                            },
+                            TAB_SETTINGS => rsx! {
+                                Settings {}
+                            },
+                            _ => unreachable!(),
+                        }
                     }
                 }
             }
@@ -167,7 +168,7 @@ fn Tabs(
     }: TabsProps,
 ) -> Element {
     rsx! {
-        div { class: "flex flex-col px-2 gap-3",
+        div { class: "flex flex-row lg:flex-col px-2 gap-3",
             for tab in tabs {
                 Tab {
                     name: tab.clone(),

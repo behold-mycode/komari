@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display, fs::File, io::BufReader};
 
 use backend::{
     ActionConfiguration, ActionConfigurationCondition, ActionKeyWith, Character, Class,
@@ -7,6 +7,7 @@ use backend::{
 };
 use dioxus::prelude::*;
 use futures_util::StreamExt;
+use rand::distr::{Alphanumeric, SampleString};
 
 use crate::{
     AppState,
@@ -182,7 +183,7 @@ fn SectionKeyBindings(
 ) -> Element {
     rsx! {
         Section { name: "Key bindings",
-            div { class: "grid grid-cols-2 gap-4",
+            div { class: "grid grid-cols-2 2xl:grid-cols-4 gap-4",
                 KeyBindingConfigurationInput {
                     label: "Rope lift",
                     optional: true,
@@ -346,16 +347,17 @@ fn SectionBuffs(character_view: Memo<Character>, save_character: Callback<Charac
         value: KeyBindingConfiguration,
     ) -> Element {
         rsx! {
-            div { class: "grid grid-cols-[140px_auto] gap-2",
+            div { class: "flex gap-2",
                 KeyBindingConfigurationInput {
                     label,
+                    div_class: "flex-1",
                     disabled,
                     on_value: move |config: Option<KeyBindingConfiguration>| {
                         on_value(config.expect("not optional"));
                     },
                     value: Some(value),
                 }
-                Checkbox {
+                CharactersCheckbox {
                     label: "Enabled",
                     disabled,
                     on_value: move |enabled| {
@@ -365,7 +367,6 @@ fn SectionBuffs(character_view: Memo<Character>, save_character: Callback<Charac
                         });
                     },
                     value: value.enabled,
-                    input_class: "w-6",
                 }
             }
         }
@@ -373,24 +374,23 @@ fn SectionBuffs(character_view: Memo<Character>, save_character: Callback<Charac
 
     rsx! {
         Section { name: "Buffs",
-            div { class: "grid grid-cols-2 gap-4",
-                Checkbox {
-                    label: "Familiar essence and skill",
-                    disabled: character_view().id.is_none(),
-                    on_value: move |enabled| {
-                        let character = character_view.peek().clone();
-                        save_character(Character {
-                            familiar_buff_key: KeyBindingConfiguration {
-                                enabled,
-                                ..character.familiar_buff_key
-                            },
-                            ..character
-                        });
-                    },
-                    value: character_view().familiar_buff_key.enabled,
-                    input_class: "w-6",
-                }
-                div {}
+            CharactersCheckbox {
+                label: "Familiar essence and skill",
+                div_class: "mb-2",
+                disabled: character_view().id.is_none(),
+                on_value: move |enabled| {
+                    let character = character_view.peek().clone();
+                    save_character(Character {
+                        familiar_buff_key: KeyBindingConfiguration {
+                            enabled,
+                            ..character.familiar_buff_key
+                        },
+                        ..character
+                    });
+                },
+                value: character_view().familiar_buff_key.enabled,
+            }
+            div { class: "grid grid-cols-2 xl:grid-cols-4 gap-4",
                 Buff {
                     label: "Sayram's Elixir",
                     disabled: character_view().id.is_none(),
@@ -569,6 +569,56 @@ fn SectionFixedActions(
 
 #[component]
 fn SectionOthers(character_view: Memo<Character>, save_character: Callback<Character>) -> Element {
+    let export_element_id = use_memo(|| Alphanumeric.sample_string(&mut rand::rng(), 8));
+    let export = use_callback(move |_| {
+        let js = format!(
+            r#"
+            const element = document.getElementById("{}");
+            if (element === null) {{
+                return;
+            }}
+            const json = await dioxus.recv();
+
+            element.setAttribute("href", "data:application/json;charset=utf-8," + encodeURIComponent(json));
+            element.setAttribute("download", "character.json");
+            element.click();
+            "#,
+            export_element_id(),
+        );
+        let eval = document::eval(js.as_str());
+        let Ok(json) = serde_json::to_string_pretty(&*character_view.peek()) else {
+            return;
+        };
+        let _ = eval.send(json);
+    });
+
+    let import_element_id = use_memo(|| Alphanumeric.sample_string(&mut rand::rng(), 8));
+    let import = use_callback(move |_| {
+        let js = format!(
+            r#"
+            const element = document.getElementById("{}");
+            if (element === null) {{
+                return;
+            }}
+            element.click();
+            "#,
+            import_element_id()
+        );
+        document::eval(js.as_str());
+    });
+    let import_characters = use_callback(move |files| {
+        for file in files {
+            let Ok(file) = File::open(file) else {
+                continue;
+            };
+            let reader = BufReader::new(file);
+            let Ok(character) = serde_json::from_reader::<_, Character>(reader) else {
+                continue;
+            };
+            save_character(character);
+        }
+    });
+
     rsx! {
         Section { name: "Others",
             div { class: "grid grid-cols-3 gap-4",
@@ -598,6 +648,18 @@ fn SectionOthers(character_view: Memo<Character>, save_character: Callback<Chara
                     },
                     value: character_view().feed_pet_key.enabled,
                 }
+                div {}
+                CharactersSelect::<PotionMode> {
+                    label: "Potion mode",
+                    disabled: character_view().id.is_none(),
+                    on_select: move |potion_mode| {
+                        save_character(Character {
+                            potion_mode,
+                            ..character_view.peek().clone()
+                        });
+                    },
+                    selected: character_view().potion_mode,
+                }
                 CharactersCheckbox {
                     label: "Use potion",
                     disabled: character_view().id.is_none(),
@@ -613,17 +675,6 @@ fn SectionOthers(character_view: Memo<Character>, save_character: Callback<Chara
                     },
                     value: character_view().potion_key.enabled,
                 }
-                CharactersSelect::<PotionMode> {
-                    label: "Potion mode",
-                    disabled: character_view().id.is_none(),
-                    on_select: move |potion_mode| {
-                        save_character(Character {
-                            potion_mode,
-                            ..character_view.peek().clone()
-                        });
-                    },
-                    selected: character_view().potion_mode,
-                }
                 match character_view().potion_mode {
                     PotionMode::EveryMillis(millis) => rsx! {
                         CharactersMillisInput {
@@ -637,9 +688,9 @@ fn SectionOthers(character_view: Memo<Character>, save_character: Callback<Chara
                             },
                             value: millis,
                         }
-                        div {}
                     },
                     PotionMode::Percentage(percent) => rsx! {
+                        div {}
                         CharactersPercentageInput {
                             label: "Use below health percentage",
                             disabled: character_view().id.is_none(),
@@ -662,6 +713,7 @@ fn SectionOthers(character_view: Memo<Character>, save_character: Callback<Chara
                             },
                             value: character_view().health_update_millis,
                         }
+                        div {}
                     },
                 }
 
@@ -687,6 +739,72 @@ fn SectionOthers(character_view: Memo<Character>, save_character: Callback<Chara
                     },
                     value: character_view().disable_adjusting,
                 }
+                div {}
+                KeyBindingConfigurationInput {
+                    label: "Use key on elite boss spawns",
+                    disabled: character_view().id.is_none(),
+                    on_value: move |config: Option<KeyBindingConfiguration>| {
+                        save_character(Character {
+                            elite_boss_key: config.expect("not optional"),
+                            ..character_view.peek().clone()
+                        });
+                    },
+                    value: Some(character_view().elite_boss_key),
+                }
+                CharactersCheckbox {
+                    label: "Enabled",
+                    disabled: character_view().id.is_none(),
+                    on_value: move |enabled| {
+                        let character = character_view.peek().clone();
+                        save_character(Character {
+                            elite_boss_key: KeyBindingConfiguration {
+                                enabled,
+                                ..character.elite_boss_key
+                            },
+                            ..character
+                        });
+                    },
+                    value: character_view().elite_boss_key.enabled,
+                }
+                div {}
+                div { class: "flex gap-2 col-span-3",
+                    div { class: "flex-grow",
+                        a {
+                            id: export_element_id(),
+                            class: "w-0 h-0 invisible",
+                        }
+                        Button {
+                            class: "w-full",
+                            text: "Export",
+                            kind: ButtonKind::Primary,
+                            on_click: move |_| {
+                                export(());
+                            },
+                        }
+                    }
+                    div { class: "flex-grow",
+                        input {
+                            id: import_element_id(),
+                            class: "w-0 h-0 invisible",
+                            r#type: "file",
+                            accept: ".json",
+                            name: "Character JSON",
+                            onchange: move |e| {
+                                if let Some(files) = e.data.files().map(|engine| engine.files()) {
+                                    import_characters(files);
+                                }
+                            },
+                        }
+                        Button {
+                            class: "w-full",
+                            text: "Import",
+                            kind: ButtonKind::Primary,
+                            on_click: move |_| {
+                                import(());
+                            },
+                        }
+                    }
+                }
             }
         }
     }
@@ -695,6 +813,7 @@ fn SectionOthers(character_view: Memo<Character>, save_character: Callback<Chara
 #[component]
 fn KeyBindingConfigurationInput(
     label: &'static str,
+    #[props(default = String::default())] div_class: String,
     #[props(default = false)] optional: bool,
     disabled: bool,
     on_value: EventHandler<Option<KeyBindingConfiguration>>,
@@ -709,6 +828,7 @@ fn KeyBindingConfigurationInput(
     rsx! {
         KeyBindingInput {
             label,
+            div_class,
             optional,
             disabled,
             on_value: move |new_value: Option<KeyBinding>| {
@@ -729,6 +849,7 @@ fn KeyBindingConfigurationInput(
 fn CharactersCheckbox(
     label: &'static str,
     #[props(default = String::default())] label_class: String,
+    #[props(default = String::default())] div_class: String,
     #[props(default = false)] disabled: bool,
     on_value: EventHandler<bool>,
     value: bool,
@@ -738,6 +859,7 @@ fn CharactersCheckbox(
             label,
             label_class,
             input_class: "w-6",
+            div_class,
             disabled,
             on_value,
             value,
@@ -814,8 +936,8 @@ fn PopupActionConfigurationInput(
     };
 
     rsx! {
-        div { class: "p-8 w-full h-full absolute inset-0 z-1 bg-gray-950/80",
-            div { class: "bg-gray-900 h-full px-2",
+        div { class: "p-8 w-full h-full absolute inset-0 z-1 bg-gray-950/80 flex",
+            div { class: "bg-gray-900 max-w-xl w-full h-full max-h-120 px-2 m-auto",
                 div { class: "flex flex-col gap-2 relative h-full",
                     div { class: "flex flex-none items-center title-xs h-10", {section_text} }
                     ActionConfigurationInput {
@@ -1137,7 +1259,7 @@ fn ActionConfigurationItem(action: ActionConfiguration) -> Element {
     rsx! {
         div { class: "grid grid-cols-[100px_auto] h-6 paragraph-xs !text-gray-400 group-hover:bg-gray-900 {linked_action}",
             div { class: "{ITEM_BORDER_CLASS} {ITEM_TEXT_CLASS}", "{link_key}{key} × {count}" }
-            div { class: "pr-13 {ITEM_TEXT_CLASS}", "{millis}{wait_secs}{with}" }
+            div { class: "pl-1 pr-13 {ITEM_TEXT_CLASS}", "{millis}{wait_secs}{with}" }
         }
     }
 }

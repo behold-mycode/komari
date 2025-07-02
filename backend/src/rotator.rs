@@ -144,6 +144,7 @@ pub struct RotatorBuildArgs<'a> {
     pub familiar_swappable_slots: SwappableFamiliars,
     pub familiar_swappable_rarities: &'a HashSet<FamiliarRarity>,
     pub familiar_swap_check_millis: u64,
+    pub elite_boss_key: Option<KeyBinding>,
     pub panic_mode: PanicMode,
     pub enable_panic_mode: bool,
     pub enable_rune_solving: bool,
@@ -163,6 +164,7 @@ impl Rotator {
             familiar_swappable_slots,
             familiar_swappable_rarities,
             familiar_swap_check_millis,
+            elite_boss_key,
             panic_mode,
             enable_panic_mode,
             enable_rune_solving,
@@ -226,6 +228,12 @@ impl Rotator {
             self.priority_actions.insert(
                 self.id_counter.fetch_add(1, Ordering::Relaxed),
                 elite_boss_change_channel_priority_action(),
+            );
+        }
+        if let Some(key) = elite_boss_key {
+            self.priority_actions.insert(
+                self.id_counter.fetch_add(1, Ordering::Relaxed),
+                elite_boss_use_key_priority_action(key),
             );
         }
         if enable_familiars_swapping {
@@ -969,6 +977,40 @@ fn elite_boss_change_channel_priority_action() -> PriorityAction {
 }
 
 #[inline]
+fn elite_boss_use_key_priority_action(key: KeyBinding) -> PriorityAction {
+    PriorityAction {
+        condition: Condition(Box::new(|context, _, last_queued_time| {
+            if !at_least_millis_passed_since(last_queued_time, 15000) {
+                return ConditionResult::Skip;
+            }
+            if let Minimap::Idle(idle) = context.minimap
+                && idle.has_elite_boss
+            {
+                ConditionResult::Queue
+            } else {
+                ConditionResult::Skip
+            }
+        })),
+        condition_kind: None,
+        inner: RotatorAction::Single(PlayerAction::Key(PlayerActionKey {
+            key,
+            link_key: None,
+            count: 1,
+            position: None,
+            direction: ActionKeyDirection::Any,
+            with: ActionKeyWith::Stationary,
+            wait_before_use_ticks: 10,
+            wait_before_use_ticks_random_range: 0,
+            wait_after_use_ticks: 10,
+            wait_after_use_ticks_random_range: 0,
+        })),
+        queue_to_front: true,
+        ignoring: false,
+        last_queued_time: None,
+    }
+}
+
+#[inline]
 fn at_least_millis_passed_since(last_queued_time: Option<Instant>, millis: u128) -> bool {
     last_queued_time
         .map(|instant| Instant::now().duration_since(instant).as_millis() >= millis)
@@ -1100,6 +1142,7 @@ mod tests {
             familiar_swappable_rarities: &HashSet::default(),
             familiar_swap_check_millis: 0,
             panic_mode: PanicMode::default(),
+            elite_boss_key: Some(KeyBinding::default()),
             enable_panic_mode: false,
             enable_rune_solving: true,
             enable_change_channel_on_elite_boss_appear: false,
@@ -1108,7 +1151,7 @@ mod tests {
         };
 
         rotator.build_actions(args);
-        assert_eq!(rotator.priority_actions.len(), 6);
+        assert_eq!(rotator.priority_actions.len(), 7);
         assert_eq!(rotator.normal_actions.len(), 2);
     }
 

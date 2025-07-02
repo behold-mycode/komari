@@ -78,7 +78,7 @@ pub fn Checkbox(
             disabled,
             div { class: "{INPUT_CLASS} {input_class}",
                 input {
-                    class: "appearance-none w-full h-full",
+                    class: "appearance-none w-full h-full disabled:cursor-not-allowed",
                     disabled,
                     r#type: "checkbox",
                     oninput: move |e| {

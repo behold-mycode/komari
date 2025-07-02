@@ -196,6 +196,12 @@ impl DefaultRequestHandler<'_> {
             familiar_swappable_slots: self.settings.familiars.swappable_familiars,
             familiar_swappable_rarities: &self.settings.familiars.swappable_rarities,
             familiar_swap_check_millis: self.settings.familiars.swap_check_millis,
+            elite_boss_key: self.character.as_ref().and_then(|character| {
+                character
+                    .elite_boss_key
+                    .enabled
+                    .then_some(character.elite_boss_key.key)
+            }),
             panic_mode: self.settings.panic_mode,
             enable_panic_mode: self.settings.enable_panic_mode,
             enable_rune_solving: self.settings.enable_rune_solving,

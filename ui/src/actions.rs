@@ -955,8 +955,8 @@ fn PopupPlatformInput(
     use_effect(use_reactive!(|value| platform.set(value)));
 
     rsx! {
-        div { class: "px-16 py-42 w-full h-full absolute inset-0 z-1 bg-gray-950/80",
-            div { class: "bg-gray-900 h-full px-2",
+        div { class: "px-16 py-42 w-full h-full absolute inset-0 z-1 bg-gray-950/80 flex",
+            div { class: "bg-gray-900 w-full max-w-104 h-full max-h-36 px-2 m-auto",
                 Section { name: section_name, class: "relative h-full",
                     div { class: "grid grid-cols-3 gap-3",
                         div { class: "relative group",
@@ -1043,8 +1043,8 @@ fn PopupBoundInput(
     use_effect(use_reactive!(|value| bound.set(value)));
 
     rsx! {
-        div { class: "px-16 py-35 w-full h-full absolute inset-0 z-1 bg-gray-950/80",
-            div { class: "bg-gray-900 h-full px-2",
+        div { class: "px-16 py-35 w-full h-full absolute inset-0 z-1 bg-gray-950/80 flex",
+            div { class: "bg-gray-900 w-full max-w-108 h-full max-h-50 px-2 m-auto",
                 Section { name: "Modify mobbing bound", class: "relative h-full",
                     div { class: "grid grid-cols-2 gap-3",
                         ActionsNumberInputI32 {
@@ -1166,7 +1166,7 @@ fn PopupActionInput(
     };
 
     rsx! {
-        div { class: "p-8 w-full h-full absolute inset-0 z-1 bg-gray-950/80",
+        div { class: "p-8 w-full h-full absolute inset-0 z-1 bg-gray-950/80 flex",
             ActionInput {
                 section_text,
                 switchable,
@@ -1236,7 +1236,7 @@ fn ActionInput(
     use_effect(use_reactive!(|value| action.set(value)));
 
     rsx! {
-        div { class: "bg-gray-900 h-full px-2",
+        div { class: "bg-gray-900 max-w-xl w-full h-full max-h-120 px-2 m-auto",
             Section { name: section_text, class: "relative h-full",
                 if switchable {
                     Button {
@@ -1891,7 +1891,7 @@ fn ActionKeyItem(action: ActionKey) -> Element {
         None
     };
     let wait_secs = match (wait_before_secs, wait_after_secs) {
-        (Some(before), None) => format!("{before} - ⏱︎ 0.00s"),
+        (Some(before), None) => format!("{before} - ⏱︎ 0.00s / "),
         (None, None) => "".to_string(),
         (None, Some(after)) => format!("⏱︎ 0.00s - {after} / "),
         (Some(before), Some(after)) => format!("{before} - {after} / "),
@@ -1913,7 +1913,7 @@ fn ActionKeyItem(action: ActionKey) -> Element {
                     ActionKeyDirection::Right => "→",
                 }
             }
-            div { class: "pr-13 {ITEM_TEXT_CLASS}", "{millis}{wait_secs}{with}" }
+            div { class: "pl-1 pr-13 {ITEM_TEXT_CLASS}", "{millis}{wait_secs}{with}" }
         }
     }
 }

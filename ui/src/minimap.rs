@@ -291,7 +291,7 @@ pub fn Minimap() -> Element {
     });
 
     rsx! {
-        div { class: "flex flex-col min-w-xs max-w-xs",
+        div { class: "flex flex-col flex-none w-xs xl:w-md",
             Canvas {
                 state,
                 minimap,
@@ -300,7 +300,7 @@ pub fn Minimap() -> Element {
             }
             Buttons { state, minimap }
             Info { state, minimap }
-            div { class: "px-2",
+            div { class: "flex-grow flex items-end px-2",
                 div { class: "h-10 w-full flex items-center",
                     TextSelect {
                         class: "w-full",
@@ -504,7 +504,7 @@ fn Info(
     });
 
     rsx! {
-        div { class: "grid grid-cols-2 items-center justify-center px-4 py-3 gap-2 flex-grow",
+        div { class: "grid grid-cols-2 items-center justify-center px-4 py-3 gap-3",
             InfoItem { name: "State", value: info().state }
             InfoItem { name: "Position", value: info().position }
             InfoItem { name: "Health", value: info().health }
