@@ -207,7 +207,7 @@ fn SectionFamiliars(
                     selected: familiars_view().swappable_familiars,
                 }
                 MillisInput {
-                    label: "Swap check milliseconds",
+                    label: "Swap check every",
                     disabled: !familiars_view().enable_familiars_swapping,
                     on_value: move |swap_check_millis| {
                         save_settings(SettingsData {

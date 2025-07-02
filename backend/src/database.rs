@@ -283,6 +283,8 @@ pub struct Character {
     pub class: Class,
     pub disable_adjusting: bool,
     pub actions: Vec<ActionConfiguration>,
+    #[serde(default)]
+    pub elite_boss_key: KeyBindingConfiguration,
 }
 
 fn jump_key_default() -> KeyBindingConfiguration {
@@ -337,6 +339,7 @@ impl Default for Character {
             class: Class::default(),
             disable_adjusting: false,
             actions: vec![],
+            elite_boss_key: KeyBindingConfiguration::default(),
         }
     }
 }

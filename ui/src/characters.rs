@@ -350,14 +350,14 @@ fn SectionBuffs(character_view: Memo<Character>, save_character: Callback<Charac
             div { class: "flex gap-2",
                 KeyBindingConfigurationInput {
                     label,
-                    div_class: "flex-2",
+                    div_class: "flex-1",
                     disabled,
                     on_value: move |config: Option<KeyBindingConfiguration>| {
                         on_value(config.expect("not optional"));
                     },
                     value: Some(value),
                 }
-                Checkbox {
+                CharactersCheckbox {
                     label: "Enabled",
                     disabled,
                     on_value: move |enabled| {
@@ -367,7 +367,6 @@ fn SectionBuffs(character_view: Memo<Character>, save_character: Callback<Charac
                         });
                     },
                     value: value.enabled,
-                    input_class: "w-6",
                 }
             }
         }
@@ -375,7 +374,7 @@ fn SectionBuffs(character_view: Memo<Character>, save_character: Callback<Charac
 
     rsx! {
         Section { name: "Buffs",
-            Checkbox {
+            CharactersCheckbox {
                 label: "Familiar essence and skill",
                 div_class: "mb-2",
                 disabled: character_view().id.is_none(),
@@ -390,7 +389,6 @@ fn SectionBuffs(character_view: Memo<Character>, save_character: Callback<Charac
                     });
                 },
                 value: character_view().familiar_buff_key.enabled,
-                input_class: "w-6",
             }
             div { class: "grid grid-cols-2 xl:grid-cols-4 gap-4",
                 Buff {
@@ -650,6 +648,18 @@ fn SectionOthers(character_view: Memo<Character>, save_character: Callback<Chara
                     },
                     value: character_view().feed_pet_key.enabled,
                 }
+                div {}
+                CharactersSelect::<PotionMode> {
+                    label: "Potion mode",
+                    disabled: character_view().id.is_none(),
+                    on_select: move |potion_mode| {
+                        save_character(Character {
+                            potion_mode,
+                            ..character_view.peek().clone()
+                        });
+                    },
+                    selected: character_view().potion_mode,
+                }
                 CharactersCheckbox {
                     label: "Use potion",
                     disabled: character_view().id.is_none(),
@@ -665,17 +675,6 @@ fn SectionOthers(character_view: Memo<Character>, save_character: Callback<Chara
                     },
                     value: character_view().potion_key.enabled,
                 }
-                CharactersSelect::<PotionMode> {
-                    label: "Potion mode",
-                    disabled: character_view().id.is_none(),
-                    on_select: move |potion_mode| {
-                        save_character(Character {
-                            potion_mode,
-                            ..character_view.peek().clone()
-                        });
-                    },
-                    selected: character_view().potion_mode,
-                }
                 match character_view().potion_mode {
                     PotionMode::EveryMillis(millis) => rsx! {
                         CharactersMillisInput {
@@ -689,9 +688,9 @@ fn SectionOthers(character_view: Memo<Character>, save_character: Callback<Chara
                             },
                             value: millis,
                         }
-                        div {}
                     },
                     PotionMode::Percentage(percent) => rsx! {
+                        div {}
                         CharactersPercentageInput {
                             label: "Use below health percentage",
                             disabled: character_view().id.is_none(),
@@ -714,6 +713,7 @@ fn SectionOthers(character_view: Memo<Character>, save_character: Callback<Chara
                             },
                             value: character_view().health_update_millis,
                         }
+                        div {}
                     },
                 }
 
@@ -738,6 +738,33 @@ fn SectionOthers(character_view: Memo<Character>, save_character: Callback<Chara
                         });
                     },
                     value: character_view().disable_adjusting,
+                }
+                div {}
+                KeyBindingConfigurationInput {
+                    label: "Use key on elite boss spawns",
+                    disabled: character_view().id.is_none(),
+                    on_value: move |config: Option<KeyBindingConfiguration>| {
+                        save_character(Character {
+                            elite_boss_key: config.expect("not optional"),
+                            ..character_view.peek().clone()
+                        });
+                    },
+                    value: Some(character_view().elite_boss_key),
+                }
+                CharactersCheckbox {
+                    label: "Enabled",
+                    disabled: character_view().id.is_none(),
+                    on_value: move |enabled| {
+                        let character = character_view.peek().clone();
+                        save_character(Character {
+                            elite_boss_key: KeyBindingConfiguration {
+                                enabled,
+                                ..character.elite_boss_key
+                            },
+                            ..character
+                        });
+                    },
+                    value: character_view().elite_boss_key.enabled,
                 }
                 div {}
                 div { class: "flex gap-2 col-span-3",
@@ -822,6 +849,7 @@ fn KeyBindingConfigurationInput(
 fn CharactersCheckbox(
     label: &'static str,
     #[props(default = String::default())] label_class: String,
+    #[props(default = String::default())] div_class: String,
     #[props(default = false)] disabled: bool,
     on_value: EventHandler<bool>,
     value: bool,
@@ -831,6 +859,7 @@ fn CharactersCheckbox(
             label,
             label_class,
             input_class: "w-6",
+            div_class,
             disabled,
             on_value,
             value,
