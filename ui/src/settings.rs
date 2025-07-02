@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display, fs::File, io::BufReader};
 
 use backend::{
     CaptureMode, FamiliarRarity, Familiars, InputMethod, IntoEnumIterator, KeyBinding,
@@ -8,6 +8,7 @@ use backend::{
 };
 use dioxus::prelude::*;
 use futures_util::StreamExt;
+use rand::distr::{Alphanumeric, SampleString};
 
 use crate::{
     AppState,
@@ -492,6 +493,58 @@ fn SectionOthers(
     settings_view: Memo<SettingsData>,
     save_settings: EventHandler<SettingsData>,
 ) -> Element {
+    let export_element_id = use_memo(|| Alphanumeric.sample_string(&mut rand::rng(), 8));
+    let export = use_callback(move |_| {
+        let js = format!(
+            r#"
+            const element = document.getElementById("{}");
+            if (element === null) {{
+                return;
+            }}
+            const json = await dioxus.recv();
+
+            element.setAttribute("href", "data:application/json;charset=utf-8," + encodeURIComponent(json));
+            element.setAttribute("download", "settings.json");
+            element.click();
+            "#,
+            export_element_id(),
+        );
+        let eval = document::eval(js.as_str());
+        let Ok(json) = serde_json::to_string_pretty(&*settings_view.peek()) else {
+            return;
+        };
+        let _ = eval.send(json);
+    });
+
+    let import_element_id = use_memo(|| Alphanumeric.sample_string(&mut rand::rng(), 8));
+    let import = use_callback(move |_| {
+        let js = format!(
+            r#"
+            const element = document.getElementById("{}");
+            if (element === null) {{
+                return;
+            }}
+            element.click();
+            "#,
+            import_element_id()
+        );
+        document::eval(js.as_str());
+    });
+    let import_settings = use_callback(move |file| {
+        let Some(id) = settings_view.peek().id else {
+            return;
+        };
+        let Ok(file) = File::open(file) else {
+            return;
+        };
+        let reader = BufReader::new(file);
+        let Ok(mut settings) = serde_json::from_reader::<_, SettingsData>(reader) else {
+            return;
+        };
+        settings.id = Some(id);
+        save_settings(settings);
+    });
+
     rsx! {
         Section { name: "Others",
             div { class: "grid grid-cols-2 gap-3",
@@ -546,6 +599,43 @@ fn SectionOthers(
                         });
                     },
                     selected: settings_view().panic_mode,
+                }
+                div {
+                    a { id: export_element_id(), class: "w-0 h-0 invisible" }
+                    Button {
+                        class: "w-full",
+                        text: "Export",
+                        kind: ButtonKind::Primary,
+                        on_click: move |_| {
+                            export(());
+                        },
+                    }
+                }
+                div {
+                    input {
+                        id: import_element_id(),
+                        class: "w-0 h-0 invisible",
+                        r#type: "file",
+                        accept: ".json",
+                        name: "Settings JSON",
+                        onchange: move |e| {
+                            if let Some(file) = e
+                                .data
+                                .files()
+                                .and_then(|engine| engine.files().into_iter().next())
+                            {
+                                import_settings(file);
+                            }
+                        },
+                    }
+                    Button {
+                        class: "w-full",
+                        text: "Import",
+                        kind: ButtonKind::Primary,
+                        on_click: move |_| {
+                            import(());
+                        },
+                    }
                 }
             }
         }

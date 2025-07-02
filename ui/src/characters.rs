@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display, fs::File, io::BufReader};
 
 use backend::{
     ActionConfiguration, ActionConfigurationCondition, ActionKeyWith, Character, Class,
@@ -7,6 +7,7 @@ use backend::{
 };
 use dioxus::prelude::*;
 use futures_util::StreamExt;
+use rand::distr::{Alphanumeric, SampleString};
 
 use crate::{
     AppState,
@@ -570,6 +571,56 @@ fn SectionFixedActions(
 
 #[component]
 fn SectionOthers(character_view: Memo<Character>, save_character: Callback<Character>) -> Element {
+    let export_element_id = use_memo(|| Alphanumeric.sample_string(&mut rand::rng(), 8));
+    let export = use_callback(move |_| {
+        let js = format!(
+            r#"
+            const element = document.getElementById("{}");
+            if (element === null) {{
+                return;
+            }}
+            const json = await dioxus.recv();
+
+            element.setAttribute("href", "data:application/json;charset=utf-8," + encodeURIComponent(json));
+            element.setAttribute("download", "character.json");
+            element.click();
+            "#,
+            export_element_id(),
+        );
+        let eval = document::eval(js.as_str());
+        let Ok(json) = serde_json::to_string_pretty(&*character_view.peek()) else {
+            return;
+        };
+        let _ = eval.send(json);
+    });
+
+    let import_element_id = use_memo(|| Alphanumeric.sample_string(&mut rand::rng(), 8));
+    let import = use_callback(move |_| {
+        let js = format!(
+            r#"
+            const element = document.getElementById("{}");
+            if (element === null) {{
+                return;
+            }}
+            element.click();
+            "#,
+            import_element_id()
+        );
+        document::eval(js.as_str());
+    });
+    let import_characters = use_callback(move |files| {
+        for file in files {
+            let Ok(file) = File::open(file) else {
+                continue;
+            };
+            let reader = BufReader::new(file);
+            let Ok(character) = serde_json::from_reader::<_, Character>(reader) else {
+                continue;
+            };
+            save_character(character);
+        }
+    });
+
     rsx! {
         Section { name: "Others",
             div { class: "grid grid-cols-3 gap-4",
@@ -687,6 +738,45 @@ fn SectionOthers(character_view: Memo<Character>, save_character: Callback<Chara
                         });
                     },
                     value: character_view().disable_adjusting,
+                }
+                div {}
+                div { class: "flex gap-2 col-span-3",
+                    div { class: "flex-grow",
+                        a {
+                            id: export_element_id(),
+                            class: "w-0 h-0 invisible",
+                        }
+                        Button {
+                            class: "w-full",
+                            text: "Export",
+                            kind: ButtonKind::Primary,
+                            on_click: move |_| {
+                                export(());
+                            },
+                        }
+                    }
+                    div { class: "flex-grow",
+                        input {
+                            id: import_element_id(),
+                            class: "w-0 h-0 invisible",
+                            r#type: "file",
+                            accept: ".json",
+                            name: "Character JSON",
+                            onchange: move |e| {
+                                if let Some(files) = e.data.files().map(|engine| engine.files()) {
+                                    import_characters(files);
+                                }
+                            },
+                        }
+                        Button {
+                            class: "w-full",
+                            text: "Import",
+                            kind: ButtonKind::Primary,
+                            on_click: move |_| {
+                                import(());
+                            },
+                        }
+                    }
                 }
             }
         }

@@ -70,6 +70,7 @@ fn main() {
     backend::init();
     let window = WindowBuilder::new()
         .with_drag_and_drop(false)
+        .with_inner_size(Size::new(PhysicalSize::new(1024, 483)))
         .with_min_inner_size(Size::new(PhysicalSize::new(320, 483)))
         .with_title(Alphanumeric.sample_string(&mut rand::rng(), 16));
     let cfg = dioxus::desktop::Config::default()
