@@ -15,7 +15,7 @@ use solve_rune::{SolvingRune, update_solving_rune_context};
 use stall::update_stalling_context;
 use state::LastMovement;
 use strum::Display;
-use timeout::{Timeout, update_with_timeout};
+use timeout::Timeout;
 use unstuck::update_unstucking_context;
 use up_jump::{UpJumping, update_up_jumping_context};
 use use_key::{UseKey, update_use_key_context};
