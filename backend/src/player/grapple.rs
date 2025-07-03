@@ -3,13 +3,11 @@ use super::{
     actions::{on_action, on_auto_mob_use_key_action, on_ping_pong_double_jump_action},
     moving::Moving,
     state::LastMovement,
+    timeout::{MovingLifecycle, next_moving_lifecycle_with_axis},
 };
 use crate::{
     context::Context,
-    player::{
-        MOVE_TIMEOUT,
-        timeout::{ChangeAxis, update_moving_axis_context},
-    },
+    player::{MOVE_TIMEOUT, timeout::ChangeAxis},
 };
 
 /// Minimum y distance from the destination required to perform a grappling hook.
@@ -38,32 +36,33 @@ pub fn update_grappling_context(
     state: &mut PlayerState,
     moving: Moving,
 ) -> Player {
-    update_moving_axis_context(
+    let key = state
+        .config
+        .grappling_key
+        .expect("cannot transition if not set");
+    let prev_pos = moving.pos;
+
+    match next_moving_lifecycle_with_axis(
         moving,
         state.last_known_pos.expect("in positional context"),
         TIMEOUT,
-        move |moving| {
-            let key = state
-                .config
-                .grappling_key
-                .expect("cannot transition if not set");
-            let _ = context.keys.send(key);
+        ChangeAxis::Vertical,
+    ) {
+        MovingLifecycle::Started(moving) => {
             state.last_movement = Some(LastMovement::Grappling);
-
+            let _ = context.keys.send(key);
             Player::Grappling(moving)
-        },
-        None::<fn()>,
-        move |mut moving| {
-            let key = state
-                .config
-                .grappling_key
-                .expect("cannot transition if not set");
+        }
+        MovingLifecycle::Ended(moving) => {
+            Player::Moving(moving.dest, moving.exact, moving.intermediates)
+        }
+        MovingLifecycle::Updated(mut moving) => {
             let cur_pos = moving.pos;
             let (y_distance, y_direction) = moving.y_distance_direction_from(true, cur_pos);
-            let x_changed = cur_pos.x != moving.pos.x;
+            let x_changed = prev_pos.x != cur_pos.x;
 
             if moving.timeout.current >= MOVE_TIMEOUT && x_changed {
-                // during double jump and grappling failed
+                // During double jump and grappling failed
                 moving = moving.timeout_current(TIMEOUT).completed(true);
             }
             if !moving.completed {
@@ -112,9 +111,8 @@ pub fn update_grappling_context(
                 },
                 || Player::Grappling(moving),
             )
-        },
-        ChangeAxis::Vertical,
-    )
+        }
+    }
 }
 
 /// Converts vertical velocity to a stopping threshold.

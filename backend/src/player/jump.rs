@@ -2,7 +2,7 @@ use super::{
     Player, PlayerState,
     moving::{MOVE_TIMEOUT, Moving},
     state::LastMovement,
-    timeout::{ChangeAxis, update_moving_axis_context},
+    timeout::{ChangeAxis, MovingLifecycle, next_moving_lifecycle_with_axis},
 };
 use crate::context::Context;
 
@@ -13,20 +13,20 @@ pub fn update_jumping_context(
     state: &mut PlayerState,
     moving: Moving,
 ) -> Player {
-    if !moving.timeout.started {
-        state.last_movement = Some(LastMovement::Jumping);
-    }
-
-    update_moving_axis_context(
+    match next_moving_lifecycle_with_axis(
         moving,
-        state.last_known_pos.unwrap(),
+        state.last_known_pos.expect("in positional context"),
         TIMEOUT,
-        |moving| {
+        ChangeAxis::Vertical,
+    ) {
+        MovingLifecycle::Started(moving) => {
+            state.last_movement = Some(LastMovement::Jumping);
             let _ = context.keys.send(state.config.jump_key);
             Player::Jumping(moving)
-        },
-        None::<fn()>,
-        Player::Jumping,
-        ChangeAxis::Vertical,
-    )
+        }
+        MovingLifecycle::Ended(moving) => {
+            Player::Moving(moving.dest, moving.exact, moving.intermediates)
+        }
+        MovingLifecycle::Updated(moving) => Player::Jumping(moving),
+    }
 }
