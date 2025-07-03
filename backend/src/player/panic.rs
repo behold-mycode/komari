@@ -3,9 +3,14 @@ use platforms::windows::KeyKind;
 use super::{
     Player, PlayerState,
     actions::{PanicTo, on_action},
-    timeout::{Timeout, update_with_timeout},
+    timeout::Timeout,
 };
-use crate::{bridge::MouseAction, context::Context, minimap::Minimap};
+use crate::{
+    bridge::MouseAction,
+    context::Context,
+    minimap::Minimap,
+    player::timeout::{Lifecycle, next_timeout_lifecycle},
+};
 
 const MAX_RETRY: u32 = 4;
 
@@ -110,19 +115,18 @@ fn update_changing_channel(
     const PRESS_RIGHT_AT: u32 = 170;
     const PRESS_ENTER_AT: u32 = 200;
 
-    update_with_timeout(
-        timeout,
-        TIMEOUT,
-        |timeout| {
+    match next_timeout_lifecycle(timeout, TIMEOUT) {
+        Lifecycle::Started(timeout) => {
             if !context
                 .detector_unwrap()
                 .detect_change_channel_menu_opened()
             {
                 let _ = context.keys.send(key);
             }
+
             panicking.stage_changing_channel(timeout, retry_count)
-        },
-        || {
+        }
+        Lifecycle::Ended => {
             if matches!(context.minimap, Minimap::Idle(_)) {
                 if retry_count + 1 < MAX_RETRY {
                     panicking.stage_changing_channel(Timeout::default(), retry_count + 1)
@@ -132,8 +136,8 @@ fn update_changing_channel(
             } else {
                 panicking.stage_completing(Timeout::default(), false)
             }
-        },
-        |timeout| {
+        }
+        Lifecycle::Updated(timeout) => {
             match timeout.current {
                 PRESS_RIGHT_AT => {
                     if context
@@ -155,8 +159,8 @@ fn update_changing_channel(
             }
 
             panicking.stage_changing_channel(timeout, retry_count)
-        },
-    )
+        }
+    }
 }
 
 fn update_going_to_town(
@@ -168,10 +172,8 @@ fn update_going_to_town(
 ) -> Panicking {
     const GUIDE_FULLY_OPENED_CHECK_AT: u32 = 30;
 
-    update_with_timeout(
-        timeout,
-        50,
-        |timeout| {
+    match next_timeout_lifecycle(timeout, 50) {
+        Lifecycle::Started(timeout) => {
             if matches!(context.minimap, Minimap::Idle(_)) {
                 if !context.detector_unwrap().detect_maple_guide_menu_opened() {
                     let _ = context.keys.send(key);
@@ -179,9 +181,10 @@ fn update_going_to_town(
             } else {
                 return panicking.stage_completing(Timeout::default(), false);
             }
+
             panicking.stage_going_to_town(timeout, retry_count)
-        },
-        || {
+        }
+        Lifecycle::Ended => {
             if context.detector_unwrap().detect_maple_guide_menu_opened() {
                 let towns = context.detector_unwrap().detect_maple_guide_towns();
                 let town = context.rng.random_choose(&towns);
@@ -191,21 +194,23 @@ fn update_going_to_town(
                     let _ = context.keys.send_mouse(x, y, MouseAction::Click);
                 }
             }
+
             if retry_count + 1 < MAX_RETRY {
                 panicking.stage_going_to_town(Timeout::default(), retry_count + 1)
             } else {
                 panicking.stage_completing(Timeout::default(), true)
             }
-        },
-        |timeout| {
+        }
+        Lifecycle::Updated(timeout) => {
             if timeout.current == GUIDE_FULLY_OPENED_CHECK_AT
                 && !context.detector_unwrap().detect_maple_guide_menu_opened()
             {
                 let _ = context.keys.send(key);
             }
+
             panicking.stage_going_to_town(timeout, retry_count)
-        },
-    )
+        }
+    }
 }
 
 fn update_completing(
@@ -218,11 +223,8 @@ fn update_completing(
         return panicking.stage_completing(timeout, true);
     }
 
-    update_with_timeout(
-        timeout,
-        245,
-        |timeout| panicking.stage_completing(timeout, completed),
-        || {
+    match next_timeout_lifecycle(timeout, 245) {
+        Lifecycle::Ended => {
             if let Minimap::Idle(idle) = context.minimap {
                 if idle.has_any_other_player() {
                     panicking.stage_changing_channel(Timeout::default(), 0)
@@ -232,9 +234,11 @@ fn update_completing(
             } else {
                 panicking.stage_completing(Timeout::default(), false)
             }
-        },
-        |timeout| panicking.stage_completing(timeout, completed),
-    )
+        }
+        Lifecycle::Started(timeout) | Lifecycle::Updated(timeout) => {
+            panicking.stage_completing(timeout, completed)
+        }
+    }
 }
 
 #[cfg(test)]
