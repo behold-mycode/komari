@@ -38,25 +38,30 @@ pub fn update_grappling_context(
     state: &mut PlayerState,
     moving: Moving,
 ) -> Player {
-    if !moving.timeout.started {
-        state.last_movement = Some(LastMovement::Grappling);
-    }
-
-    let cur_pos = state.last_known_pos.unwrap();
-    let key = state.config.grappling_key.unwrap(); // Cannot transition if None
-    let x_changed = cur_pos.x != moving.pos.x;
-    let (y_distance, y_direction) = moving.y_distance_direction_from(true, cur_pos);
-
     update_moving_axis_context(
         moving,
-        cur_pos,
+        state.last_known_pos.expect("in positional context"),
         TIMEOUT,
-        |moving| {
+        move |moving| {
+            let key = state
+                .config
+                .grappling_key
+                .expect("cannot transition if not set");
             let _ = context.keys.send(key);
+            state.last_movement = Some(LastMovement::Grappling);
+
             Player::Grappling(moving)
         },
         None::<fn()>,
-        |mut moving| {
+        move |mut moving| {
+            let key = state
+                .config
+                .grappling_key
+                .expect("cannot transition if not set");
+            let cur_pos = moving.pos;
+            let (y_distance, y_direction) = moving.y_distance_direction_from(true, cur_pos);
+            let x_changed = cur_pos.x != moving.pos.x;
+
             if moving.timeout.current >= MOVE_TIMEOUT && x_changed {
                 // during double jump and grappling failed
                 moving = moving.timeout_current(TIMEOUT).completed(true);
