@@ -120,3 +120,92 @@ pub fn update_grappling_context(
 fn stopping_threshold(velocity: f32) -> i32 {
     (STOPPING_THRESHOLD as f32 + 1.1 * velocity).ceil() as i32
 }
+
+#[cfg(test)]
+mod tests {
+    use mockall::predicate::eq;
+    use opencv::core::Point;
+    use platforms::windows::KeyKind;
+
+    use super::*;
+    use crate::bridge::MockKeySender;
+
+    const START_POS: Point = Point { x: 100, y: 100 };
+    const END_POS: Point = Point { x: 100, y: 200 };
+
+    fn mock_state_with_grapple(pos: Point) -> PlayerState {
+        let mut state = PlayerState::default();
+        state.last_known_pos = Some(pos);
+        state.config.grappling_key = Some(KeyKind::Space);
+        state
+    }
+
+    fn mock_moving(pos: Point) -> Moving {
+        Moving::new(pos, pos, false, None)
+    }
+
+    #[test]
+    fn update_grappling_context_started() {
+        let mut state = mock_state_with_grapple(END_POS);
+        let moving = mock_moving(START_POS);
+        let mut keys = MockKeySender::new();
+        keys.expect_send()
+            .once()
+            .with(eq(KeyKind::Space))
+            .returning(|_| Ok(()));
+        let context = Context::new(Some(keys), None);
+
+        let result = update_grappling_context(&context, &mut state, moving);
+
+        match result {
+            Player::Grappling(m) => {
+                assert_eq!(m.pos, END_POS);
+                assert_eq!(state.last_movement, Some(LastMovement::Grappling));
+            }
+            _ => panic!("Expected Player::Grappling"),
+        }
+    }
+
+    #[test]
+    fn update_grappling_context_updated_timeout_and_x_change() {
+        let mut state = mock_state_with_grapple(START_POS);
+        let context = Context::new(None, None);
+        let mut moving = mock_moving(Point::new(START_POS.x + 10, START_POS.y)); // x changed
+        moving.timeout.current = MOVE_TIMEOUT;
+        moving.timeout.started = true;
+
+        let result = update_grappling_context(&context, &mut state, moving);
+
+        match result {
+            Player::Grappling(m) => {
+                println!("{m:?}");
+                assert!(m.completed);
+            }
+            _ => panic!("Expected Player::Grappling"),
+        }
+    }
+
+    #[test]
+    fn update_grappling_context_updated_auto_complete_on_stopping_threshold() {
+        let mut keys = MockKeySender::new();
+        keys.expect_send()
+            .once()
+            .with(eq(KeyKind::Space))
+            .returning(|_| Ok(()));
+        let context = Context::new(Some(keys), None);
+        let mut state = mock_state_with_grapple(Point::new(100, 103)); // close enough
+        let mut moving = mock_moving(Point::new(100, 100));
+        moving.timeout.started = true;
+
+        let result = update_grappling_context(&context, &mut state, moving);
+
+        match result {
+            Player::Grappling(m) => {
+                assert!(m.completed);
+            }
+            _ => panic!("Expected Player::Grappling"),
+        }
+    }
+
+    // TODO: Add tests for on_action
+}
