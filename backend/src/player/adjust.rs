@@ -12,7 +12,7 @@ use crate::{
         double_jump::DoubleJumping,
         moving::MOVE_TIMEOUT,
         state::LastMovement,
-        timeout::{ChangeAxis, Timeout, update_moving_axis_context},
+        timeout::{ChangeAxis, MovingLifecycle, Timeout, next_moving_lifecycle_with_axis},
     },
 };
 
@@ -37,39 +37,41 @@ pub fn update_adjusting_context(
     moving: Moving,
 ) -> Player {
     debug_assert!(moving.timeout.started || !moving.completed);
-    let cur_pos = state.last_known_pos.unwrap();
+    let cur_pos = state.last_known_pos.expect("in positional context");
     let (x_distance, x_direction) = moving.x_distance_direction_from(true, cur_pos);
-    let (y_distance, y_direction) = moving.y_distance_direction_from(true, cur_pos);
     let is_intermediate = moving.is_destination_intermediate();
-    if x_distance >= state.double_jump_threshold(is_intermediate) {
-        state.use_immediate_control_flow = true;
-        return Player::Moving(moving.dest, moving.exact, moving.intermediates);
-    }
-    if !moving.timeout.started {
-        // Checks to perform a fall and returns to walk
-        if !matches!(state.last_movement, Some(LastMovement::Falling))
-            && x_distance >= ADJUSTING_MEDIUM_THRESHOLD
-            && y_direction < 0
-            && y_distance >= FALLING_THRESHOLD
-            && !is_intermediate
-            && state.is_stationary
-        {
-            return Player::Falling(moving.pos(cur_pos), cur_pos, false);
-        }
-        state.use_immediate_control_flow = true; // Adjusting does not use on_started
-        state.last_movement = Some(LastMovement::Adjusting);
-    }
 
-    update_moving_axis_context(
-        moving,
-        cur_pos,
-        MOVE_TIMEOUT,
-        Player::Adjusting,
-        Some(|| {
+    match next_moving_lifecycle_with_axis(moving, cur_pos, MOVE_TIMEOUT, ChangeAxis::Both) {
+        MovingLifecycle::Started(moving) => {
+            // Checks to perform a fall and returns to walk
+            let (y_distance, y_direction) = moving.y_distance_direction_from(true, cur_pos);
+            if !matches!(state.last_movement, Some(LastMovement::Falling))
+                && x_distance >= ADJUSTING_MEDIUM_THRESHOLD
+                && y_direction < 0
+                && y_distance >= FALLING_THRESHOLD
+                && !is_intermediate
+                && state.is_stationary
+            {
+                return Player::Falling(moving, cur_pos, false);
+            }
+
+            state.use_immediate_control_flow = true;
+            state.last_movement = Some(LastMovement::Adjusting);
+
+            Player::Adjusting(moving)
+        }
+        MovingLifecycle::Ended(moving) => {
             let _ = context.keys.send_up(KeyKind::Right);
             let _ = context.keys.send_up(KeyKind::Left);
-        }),
-        |mut moving| {
+
+            Player::Moving(moving.dest, moving.exact, moving.intermediates)
+        }
+        MovingLifecycle::Updated(mut moving) => {
+            if x_distance >= state.double_jump_threshold(is_intermediate) {
+                state.use_immediate_control_flow = true;
+                return Player::Moving(moving.dest, moving.exact, moving.intermediates);
+            }
+
             if !moving.completed {
                 let should_adjust_medium = x_distance >= ADJUSTING_MEDIUM_THRESHOLD;
                 let should_adjust_short = moving.exact && x_distance >= ADJUSTING_SHORT_THRESHOLD;
@@ -118,9 +120,8 @@ pub fn update_adjusting_context(
                     }
                 },
             )
-        },
-        ChangeAxis::Both,
-    )
+        }
+    }
 }
 
 fn on_player_action(
