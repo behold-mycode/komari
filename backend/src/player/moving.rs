@@ -263,101 +263,119 @@ pub fn update_moving_context(
     }
 
     let cur_pos = state.last_known_pos.unwrap();
-    let disable_adjusting = state.config.disable_adjusting;
     let moving = Moving::new(cur_pos, dest, exact, intermediates);
+    let is_intermediate = moving.is_destination_intermediate();
+    let skip_destination = moving.auto_mob_can_skip_current_destination(state);
+
     let (x_distance, _) = moving.x_distance_direction_from(true, cur_pos);
     let (y_distance, y_direction) = moving.y_distance_direction_from(true, cur_pos);
-    let skip_destination = moving.auto_mob_can_skip_current_destination(state);
-    let is_intermediate = moving.is_destination_intermediate();
 
-    match (skip_destination, x_distance, y_direction, y_distance) {
-        (false, d, _, _) if d >= state.double_jump_threshold(is_intermediate) => {
-            let require_stationary = state.has_ping_pong_action_only()
-                && !matches!(
-                    state.last_movement,
-                    Some(LastMovement::Grappling | LastMovement::UpJumping)
-                );
-            abort_action_on_state_repeat(
-                Player::DoubleJumping(DoubleJumping::new(moving, false, require_stationary)),
-                context,
-                state,
-            )
-        }
-        // Allows disabling adjusting only if `exact` is false
-        (false, d, _, _)
-            if (!disable_adjusting && d >= ADJUSTING_MEDIUM_THRESHOLD)
-                || (exact && d >= ADJUSTING_SHORT_THRESHOLD) =>
-        {
-            abort_action_on_state_repeat(Player::Adjusting(moving), context, state)
-        }
-        // y > 0: cur_pos is below dest
-        // y < 0: cur_pos is above of dest
-        (false, _, y, d)
-            if y > 0 && d >= GRAPPLING_THRESHOLD && !state.should_disable_grappling() =>
-        {
-            abort_action_on_state_repeat(Player::Grappling(moving), context, state)
-        }
-        (false, _, y, d) if y > 0 && d >= UP_JUMP_THRESHOLD => {
-            // In auto mob with platforms pathing and up jump only, immediately aborts the action
-            // if there are no intermediate points and the distance is too big to up jump.
-            if state.has_auto_mob_action_only()
-                && state.config.auto_mob_platforms_pathing
-                && state.config.auto_mob_platforms_pathing_up_jump_only
-                && intermediates.is_none()
-                && d >= GRAPPLING_THRESHOLD
-            {
-                debug!(target: "player", "auto mob aborted because distance for up jump only is too big");
-                state.clear_action_completed();
-                return Player::Idle;
-            }
-            abort_action_on_state_repeat(Player::UpJumping(UpJumping::new(moving)), context, state)
-        }
-        (false, _, y, d) if y > 0 && d >= JUMP_THRESHOLD => {
-            abort_action_on_state_repeat(Player::Jumping(moving), context, state)
-        }
-        // this probably won't work if the platforms are far apart,
-        // which is weird to begin with and only happen in very rare place (e.g. Haven)
-        (false, _, y, d) if y < 0 && d >= state.falling_threshold(is_intermediate) => {
-            abort_action_on_state_repeat(Player::Falling(moving, cur_pos, false), context, state)
-        }
-        _ => {
-            debug!(
-                target: "player",
-                "reached {dest:?} with actual position {cur_pos:?}"
+    let disable_adjusting = state.config.disable_adjusting;
+
+    // Check to double jump
+    if !skip_destination && x_distance >= state.double_jump_threshold(is_intermediate) {
+        let require_stationary = state.has_ping_pong_action_only()
+            && !matches!(
+                state.last_movement,
+                Some(LastMovement::Grappling | LastMovement::UpJumping)
             );
-            if let Some(mut intermediates) = intermediates
-                && let Some((dest, exact)) = intermediates.next()
-            {
-                state.clear_unstucking(false);
-                state.clear_last_movement();
-                if matches!(moving.intermediate_hint(), Some(MovementHint::WalkAndJump)) {
-                    // TODO: Any better way ???
-                    state.stalling_timeout_state = Some(Player::Jumping(Moving::new(
-                        cur_pos,
-                        dest,
-                        exact,
-                        Some(intermediates),
-                    )));
-                    let key = if dest.x - cur_pos.x >= 0 {
-                        KeyKind::Right
-                    } else {
-                        KeyKind::Left
-                    };
-                    let _ = context.keys.send_down(key);
-                    return Player::Stalling(Timeout::default(), 3);
-                }
-
-                return Player::Moving(dest, exact, Some(intermediates));
-            }
-
-            let last_known_direction = state.last_known_direction;
-            on_action(
-                state,
-                |action| on_player_action(last_known_direction, action, moving),
-                || Player::Idle,
-            )
-        }
+        return abort_action_on_state_repeat(
+            Player::DoubleJumping(DoubleJumping::new(moving, false, require_stationary)),
+            context,
+            state,
+        );
     }
+
+    // Check to adjust and allow disabling adjusting only if `exact` is false
+    if !skip_destination
+        && ((!disable_adjusting && x_distance >= ADJUSTING_MEDIUM_THRESHOLD)
+            || (exact && x_distance >= ADJUSTING_SHORT_THRESHOLD))
+    {
+        return abort_action_on_state_repeat(Player::Adjusting(moving), context, state);
+    }
+
+    // Check to grapple
+    if !skip_destination
+        && y_direction > 0
+        && y_distance >= GRAPPLING_THRESHOLD
+        && !state.should_disable_grappling()
+    {
+        return abort_action_on_state_repeat(Player::Grappling(moving), context, state);
+    }
+
+    // Check to up jump
+    if !skip_destination && y_direction > 0 && y_distance >= UP_JUMP_THRESHOLD {
+        // In auto mob with platforms pathing and up jump only, immediately aborts the action
+        // if there are no intermediate points and the distance is too big to up jump.
+        if state.has_auto_mob_action_only()
+            && state.config.auto_mob_platforms_pathing
+            && state.config.auto_mob_platforms_pathing_up_jump_only
+            && intermediates.is_none()
+            && y_distance >= GRAPPLING_THRESHOLD
+        {
+            debug!(target: "player", "auto mob aborted because distance for up jump only is too big");
+            state.clear_action_completed();
+            return Player::Idle;
+        }
+
+        return abort_action_on_state_repeat(
+            Player::UpJumping(UpJumping::new(moving)),
+            context,
+            state,
+        );
+    }
+
+    // Check to jump
+    if !skip_destination && y_direction > 0 && y_distance >= JUMP_THRESHOLD {
+        return abort_action_on_state_repeat(Player::Jumping(moving), context, state);
+    }
+
+    // Check to fall
+    if !skip_destination
+        && y_direction < 0
+        && y_distance >= state.falling_threshold(is_intermediate)
+    {
+        return abort_action_on_state_repeat(
+            Player::Falling(moving, cur_pos, false),
+            context,
+            state,
+        );
+    }
+
+    debug!(target: "player", "reached {dest:?} with actual position {cur_pos:?}");
+    if let Some(mut intermediates) = intermediates
+        && let Some((dest, exact)) = intermediates.next()
+    {
+        state.clear_unstucking(false);
+        state.clear_last_movement();
+
+        if matches!(moving.intermediate_hint(), Some(MovementHint::WalkAndJump)) {
+            // TODO: Any better way ???
+            state.stalling_timeout_state = Some(Player::Jumping(Moving::new(
+                cur_pos,
+                dest,
+                exact,
+                Some(intermediates),
+            )));
+
+            let key = if dest.x - cur_pos.x >= 0 {
+                KeyKind::Right
+            } else {
+                KeyKind::Left
+            };
+            let _ = context.keys.send_down(key);
+            return Player::Stalling(Timeout::default(), 3);
+        }
+
+        return Player::Moving(dest, exact, Some(intermediates));
+    }
+
+    let last_known_direction = state.last_known_direction;
+    on_action(
+        state,
+        |action| on_player_action(last_known_direction, action, moving),
+        || Player::Idle,
+    )
 }
 
 /// Aborts the action when state starts looping.
