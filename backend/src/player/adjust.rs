@@ -43,7 +43,7 @@ pub fn update_adjusting_context(
 
     match next_moving_lifecycle_with_axis(moving, cur_pos, MOVE_TIMEOUT, ChangeAxis::Both) {
         MovingLifecycle::Started(moving) => {
-            // Checks to perform a fall and returns to walk
+            // Check to perform a fall and returns to walk
             if !is_intermediate
                 && state.last_movement != Some(LastMovement::Falling)
                 && state.is_stationary

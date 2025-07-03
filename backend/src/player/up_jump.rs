@@ -3,7 +3,10 @@ use platforms::windows::KeyKind;
 
 use super::{
     Player, PlayerActionKey, PlayerActionPingPong, PlayerState,
-    actions::on_ping_pong_double_jump_action, moving::Moving, use_key::UseKey,
+    actions::on_ping_pong_double_jump_action,
+    moving::Moving,
+    timeout::{MovingLifecycle, next_moving_lifecycle_with_axis},
+    use_key::UseKey,
 };
 use crate::{
     ActionKeyWith,
@@ -13,7 +16,7 @@ use crate::{
         MOVE_TIMEOUT, PlayerAction,
         actions::{on_action, on_auto_mob_use_key_action},
         state::LastMovement,
-        timeout::{ChangeAxis, update_moving_axis_context},
+        timeout::ChangeAxis,
     },
 };
 
@@ -61,37 +64,36 @@ pub fn update_up_jumping_context(
     state: &mut PlayerState,
     up_jumping: UpJumping,
 ) -> Player {
-    let cur_pos = state.last_known_pos.unwrap();
-    let moving = up_jumping.moving;
-    let (y_distance, y_direction) = moving.y_distance_direction_from(true, cur_pos);
     let up_jump_key = state.config.upjump_key;
+    let jump_key = state.config.jump_key;
     let has_teleport_key = state.config.teleport_key.is_some();
 
-    if !moving.timeout.started {
-        if state.velocity.0 > X_NEAR_STATIONARY_THRESHOLD {
-            return Player::UpJumping(up_jumping.moving(moving));
-        }
-        if let Minimap::Idle(idle) = context.minimap {
-            for portal in idle.portals {
-                let x_range = portal.x..(portal.x + portal.width);
-                let y_range = portal.y..(portal.y + portal.height);
+    match next_moving_lifecycle_with_axis(
+        up_jumping.moving,
+        state.last_known_pos.expect("in positional context"),
+        TIMEOUT,
+        ChangeAxis::Vertical,
+    ) {
+        MovingLifecycle::Started(moving) => {
+            // Stall until near stationary
+            if state.velocity.0 > X_NEAR_STATIONARY_THRESHOLD {
+                return Player::UpJumping(up_jumping.moving(moving.timeout_started(false)));
+            }
 
-                if x_range.contains(&cur_pos.x) && y_range.contains(&cur_pos.y) {
-                    debug!(target: "player", "abort action due to potential map moving by portal {portal:?}");
-                    state.clear_action_completed();
-                    return Player::Idle;
+            if let Minimap::Idle(idle) = context.minimap {
+                for portal in idle.portals {
+                    let x_range = portal.x..(portal.x + portal.width);
+                    let y_range = portal.y..(portal.y + portal.height);
+
+                    if x_range.contains(&moving.pos.x) && y_range.contains(&moving.pos.y) {
+                        debug!(target: "player", "abort action due to potential map moving by portal {portal:?}");
+                        state.clear_action_completed();
+                        return Player::Idle;
+                    }
                 }
             }
-        }
-        state.last_movement = Some(LastMovement::UpJumping);
-    }
+            state.last_movement = Some(LastMovement::UpJumping);
 
-    let jump_key = state.config.jump_key;
-    update_moving_axis_context(
-        moving,
-        cur_pos,
-        TIMEOUT,
-        |moving| {
             // Only send Up key when the key is not of a Demon Slayer
             if !matches!(up_jump_key, Some(KeyKind::Up)) {
                 let _ = context.keys.send_down(KeyKind::Up);
@@ -101,18 +103,24 @@ pub fn update_up_jumping_context(
                 (None, _) | (Some(_), true) | (Some(KeyKind::Up), false) => {
                     // This if is for mage. It means if the player is a mage and the y distance
                     // is less than `TELEPORT_UP_JUMP_THRESHOLD`, do not send jump key.
+                    let (y_distance, _) = moving.y_distance_direction_from(true, moving.pos);
                     if !can_mage_skip_jump_key(up_jump_key, has_teleport_key, y_distance) {
                         let _ = context.keys.send(jump_key);
                     }
                 }
                 _ => (),
             }
+
             Player::UpJumping(up_jumping.moving(moving))
-        },
-        Some(|| {
+        }
+        MovingLifecycle::Ended(moving) => {
             let _ = context.keys.send_up(KeyKind::Up);
-        }),
-        |mut moving| {
+            Player::Moving(moving.dest, moving.exact, moving.intermediates)
+        }
+        MovingLifecycle::Updated(mut moving) => {
+            let cur_pos = moving.pos;
+            let (y_distance, y_direction) = moving.y_distance_direction_from(true, moving.pos);
+
             match (moving.completed, up_jump_key, has_teleport_key) {
                 (false, None, true) | (false, Some(KeyKind::Up), false) | (false, None, false) => {
                     if state.velocity.1 <= UP_JUMPED_Y_VELOCITY_THRESHOLD {
@@ -166,6 +174,7 @@ pub fn update_up_jumping_context(
                                 false,
                             ));
                         }
+
                         let (x_distance, _) = moving.x_distance_direction_from(false, cur_pos);
                         let (y_distance, _) = moving.y_distance_direction_from(false, cur_pos);
                         on_auto_mob_use_key_action(context, action, cur_pos, x_distance, y_distance)
@@ -175,9 +184,10 @@ pub fn update_up_jumping_context(
                         ..
                     }) => {
                         if !moving.completed || y_direction > 0 {
-                            return None;
+                            None
+                        } else {
+                            Some((Player::UseKey(UseKey::from_action(action)), false))
                         }
-                        Some((Player::UseKey(UseKey::from_action(action)), false))
                     }
                     PlayerAction::PingPong(PlayerActionPingPong {
                         bound, direction, ..
@@ -207,9 +217,8 @@ pub fn update_up_jumping_context(
                 },
                 || Player::UpJumping(up_jumping.moving(moving)),
             )
-        },
-        ChangeAxis::Vertical,
-    )
+        }
+    }
 }
 
 #[inline]

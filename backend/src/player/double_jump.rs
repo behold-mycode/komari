@@ -146,7 +146,7 @@ pub fn update_double_jumping_context(
         axis,
     ) {
         MovingLifecycle::Started(moving) => {
-            // Checks to perform a fall and returns to double jump
+            // Check to perform a fall and returns to double jump
             if !is_intermediate
                 && !double_jumping.forced
                 && state.last_movement != Some(LastMovement::Falling)
@@ -158,7 +158,7 @@ pub fn update_double_jumping_context(
                 }
             }
 
-            // Stalls until near stationary by resetting started
+            // Stall until near stationary by resetting started
             if double_jumping.require_near_stationary {
                 let (x_velocity, y_velocity) = state.velocity;
                 if x_velocity > X_NEAR_STATIONARY_VELOCITY_THRESHOLD
