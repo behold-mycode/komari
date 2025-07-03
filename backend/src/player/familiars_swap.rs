@@ -7,7 +7,7 @@ use platforms::windows::KeyKind;
 use super::{
     Player, PlayerState,
     actions::on_action,
-    timeout::{Timeout, update_with_timeout},
+    timeout::{Lifecycle, Timeout, next_timeout_lifecycle},
 };
 use crate::{
     array::Array,
@@ -214,10 +214,8 @@ fn update_open_menu(
     timeout: Timeout,
     retry_count: u32,
 ) -> FamiliarsSwapping {
-    update_with_timeout(
-        timeout,
-        10,
-        |timeout| {
+    match next_timeout_lifecycle(timeout, 10) {
+        Lifecycle::Started(timeout) => {
             let rest = swapping.mouse_rest;
             let _ = context.keys.send_mouse(rest.x, rest.y, MouseAction::Move);
             if context.detector_unwrap().detect_familiar_menu_opened() {
@@ -228,10 +226,10 @@ fn update_open_menu(
             } else {
                 swapping.stage_completing(Timeout::default(), false)
             }
-        },
-        || swapping.stage_open_menu(Timeout::default(), retry_count),
-        |timeout| swapping.stage_open_menu(timeout, retry_count),
-    )
+        }
+        Lifecycle::Ended => swapping.stage_open_menu(Timeout::default(), retry_count),
+        Lifecycle::Updated(timeout) => swapping.stage_open_menu(timeout, retry_count),
+    }
 }
 
 fn open_setup(
@@ -242,10 +240,8 @@ fn open_setup(
 ) -> FamiliarsSwapping {
     const OPEN_SETUP_TIMEOUT: u32 = 10;
 
-    update_with_timeout(
-        timeout,
-        OPEN_SETUP_TIMEOUT,
-        |timeout| {
+    match next_timeout_lifecycle(timeout, OPEN_SETUP_TIMEOUT) {
+        Lifecycle::Started(timeout) => {
             let mut swapping = swapping;
 
             // Try click familiar menu setup button every one second until it becomes
@@ -257,8 +253,8 @@ fn open_setup(
             }
 
             swapping.stage_open_setup(timeout, retry_count)
-        },
-        || {
+        }
+        Lifecycle::Ended => {
             if context
                 .detector_unwrap()
                 .detect_familiar_setup_button()
@@ -276,9 +272,9 @@ fn open_setup(
                 let _ = context.keys.send_mouse(rest.x, rest.y, MouseAction::Move);
                 swapping.stage(SwappingStage::FindSlots)
             }
-        },
-        |timeout| swapping.stage_open_setup(timeout, retry_count),
-    )
+        }
+        Lifecycle::Updated(timeout) => swapping.stage_open_setup(timeout, retry_count),
+    }
 }
 
 fn update_find_slots(context: &Context, mut swapping: FamiliarsSwapping) -> FamiliarsSwapping {
@@ -361,18 +357,16 @@ fn update_free_slot(
     const FAMILIAR_CHECK_FREE_TICK: u32 = FAMILIAR_FREE_SLOTS_TIMEOUT;
     const FAMILIAR_CHECK_LVL_5_TICK: u32 = 5;
 
-    update_with_timeout(
-        timeout,
-        FAMILIAR_FREE_SLOTS_TIMEOUT,
-        |timeout| {
+    match next_timeout_lifecycle(timeout, FAMILIAR_FREE_SLOTS_TIMEOUT) {
+        Lifecycle::Started(timeout) => {
             // On start, move mouse to hover over the familiar slot to check level
             let bbox = swapping.slots[index].0;
             let x = bbox.x + bbox.width / 2;
             let _ = context.keys.send_mouse(x, bbox.y + 20, MouseAction::Move);
             swapping.stage_free_slot(timeout, index)
-        },
-        || swapping.stage_free_slots(index, true),
-        |mut timeout| {
+        }
+        Lifecycle::Ended => swapping.stage_free_slots(index, true),
+        Lifecycle::Updated(mut timeout) => {
             let mut swapping = swapping;
             let bbox = swapping.slots[index].0;
             let (x, y) = bbox_click_point(bbox);
@@ -429,8 +423,8 @@ fn update_free_slot(
             }
 
             swapping.stage_free_slot(timeout, index)
-        },
-    )
+        }
+    }
 }
 
 fn update_find_cards(context: &Context, mut swapping: FamiliarsSwapping) -> FamiliarsSwapping {
@@ -467,15 +461,13 @@ fn update_swapping(
     const SWAPPING_TIMEOUT: u32 = 10;
     const SWAPPING_DETECT_LEVEL_TICK: u32 = 5;
 
-    update_with_timeout(
-        timeout,
-        SWAPPING_TIMEOUT,
-        |timeout| {
+    match next_timeout_lifecycle(timeout, SWAPPING_TIMEOUT) {
+        Lifecycle::Started(timeout) => {
             let (x, y) = bbox_click_point(swapping.cards[index]);
             let _ = context.keys.send_mouse(x, y, MouseAction::Move);
             swapping.stage_swapping(timeout, index)
-        },
-        || {
+        }
+        Lifecycle::Ended => {
             // Check free slot in timeout
             let mut swapping = swapping;
             for i in 0..FAMILIAR_SLOTS {
@@ -497,8 +489,8 @@ fn update_swapping(
                 let _ = context.keys.send_mouse(rest.x, rest.y, MouseAction::Move);
                 swapping.stage_scrolling(Timeout::default(), None, 0)
             }
-        },
-        |timeout| {
+        }
+        Lifecycle::Updated(timeout) => {
             let rest = swapping.mouse_rest;
 
             if timeout.current == SWAPPING_DETECT_LEVEL_TICK {
@@ -525,8 +517,8 @@ fn update_swapping(
             }
 
             swapping.stage_swapping(timeout, index)
-        },
-    )
+        }
+    }
 }
 
 #[inline]
@@ -546,10 +538,8 @@ fn update_scrolling(
     /// Y distance difference indicating the scrollbar has scrolled.
     const SCROLLBAR_SCROLLED_THRESHOLD: i32 = 10;
 
-    update_with_timeout(
-        timeout,
-        SCROLLING_TIMEOUT,
-        |timeout| {
+    match next_timeout_lifecycle(timeout, SCROLLING_TIMEOUT) {
+        Lifecycle::Started(timeout) => {
             let Ok(scrollbar) = context.detector_unwrap().detect_familiar_scrollbar() else {
                 // TODO: recoverable?
                 return swapping.stage_completing(Timeout::default(), false);
@@ -559,8 +549,8 @@ fn update_scrolling(
             let _ = context.keys.send_mouse(x, y, MouseAction::Scroll);
 
             swapping.stage_scrolling(timeout, Some(scrollbar), retry_count)
-        },
-        || {
+        }
+        Lifecycle::Ended => {
             if let Ok(bar) = context.detector_unwrap().detect_familiar_scrollbar() {
                 if (bar.y - scrollbar.unwrap().y).abs() >= SCROLLBAR_SCROLLED_THRESHOLD {
                     return FamiliarsSwapping {
@@ -579,16 +569,16 @@ fn update_scrolling(
             }
 
             swapping.stage_completing(Timeout::default(), false)
-        },
-        |timeout| {
+        }
+        Lifecycle::Updated(timeout) => {
             if timeout.current == SCROLLING_REST_TICK {
                 let (x, y) = bbox_click_point(scrollbar.unwrap());
                 let _ = context.keys.send_mouse(x + 70, y, MouseAction::Move);
             }
 
             swapping.stage_scrolling(timeout, scrollbar, retry_count)
-        },
-    )
+        }
+    }
 }
 
 #[inline]
@@ -603,10 +593,8 @@ fn update_saving(
     const PRESS_OK_AT: u32 = 15;
     const PRESS_ESC_AT: u32 = 20;
 
-    update_with_timeout(
-        timeout,
-        SAVING_TIMEOUT,
-        |timeout| {
+    match next_timeout_lifecycle(timeout, SAVING_TIMEOUT) {
+        Lifecycle::Started(timeout) => {
             let Ok(button) = context.detector_unwrap().detect_familiar_save_button() else {
                 // TODO: recoverable?
                 return swapping.stage_completing(Timeout::default(), false);
@@ -616,8 +604,8 @@ fn update_saving(
             let _ = context.keys.send_mouse(x, y, MouseAction::Click);
 
             swapping.stage_saving(timeout, retry_count)
-        },
-        || {
+        }
+        Lifecycle::Ended => {
             if context.detector_unwrap().detect_familiar_menu_opened()
                 && retry_count + 1 < MAX_RETRY
             {
@@ -625,8 +613,8 @@ fn update_saving(
             } else {
                 swapping.stage_completing(Timeout::default(), false)
             }
-        },
-        |timeout| {
+        }
+        Lifecycle::Updated(timeout) => {
             match timeout.current {
                 PRESS_OK_AT => {
                     if let Ok(button) = context.detector_unwrap().detect_esc_confirm_button() {
@@ -639,9 +627,10 @@ fn update_saving(
                 }
                 _ => (),
             }
+
             swapping.stage_saving(timeout, retry_count)
-        },
-    )
+        }
+    }
 }
 
 #[inline]
@@ -651,19 +640,17 @@ fn update_completing(
     timeout: Timeout,
     completed: bool,
 ) -> FamiliarsSwapping {
-    update_with_timeout(
-        timeout,
-        10,
-        |timeout| {
+    match next_timeout_lifecycle(timeout, 10) {
+        Lifecycle::Started(timeout) => {
             let has_menu = context.detector_unwrap().detect_familiar_menu_opened();
             if has_menu {
                 let _ = context.keys.send(KeyKind::Esc);
             }
             swapping.stage_completing(timeout, !has_menu)
-        },
-        || swapping.stage_completing(Timeout::default(), completed),
-        |timeout| swapping.stage_completing(timeout, completed),
-    )
+        }
+        Lifecycle::Ended => swapping.stage_completing(Timeout::default(), completed),
+        Lifecycle::Updated(timeout) => swapping.stage_completing(timeout, completed),
+    }
 }
 
 #[inline]
