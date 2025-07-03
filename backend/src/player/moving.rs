@@ -135,6 +135,17 @@ impl Moving {
     }
 
     #[inline]
+    pub fn timeout_started(self, started: bool) -> Moving {
+        Moving {
+            timeout: Timeout {
+                started,
+                ..self.timeout
+            },
+            ..self
+        }
+    }
+
+    #[inline]
     fn intermediate_hint(&self) -> Option<MovementHint> {
         self.intermediates
             .map(|intermediates| intermediates.inner[intermediates.current.saturating_sub(1)].1)

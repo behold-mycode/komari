@@ -8,7 +8,9 @@ use super::{
     PingPongDirection, Player, PlayerAction, PlayerActionKey, PlayerState,
     actions::{PlayerActionPingPong, on_action_state, on_auto_mob_use_key_action},
     moving::Moving,
-    timeout::update_with_timeout,
+    timeout::{
+        Lifecycle, MovingLifecycle, next_moving_lifecycle_with_axis, next_timeout_lifecycle,
+    },
     up_jump::UpJumping,
     use_key::UseKey,
 };
@@ -18,7 +20,7 @@ use crate::{
     player::{
         moving::MOVE_TIMEOUT,
         state::LastMovement,
-        timeout::{ChangeAxis, Timeout, update_moving_axis_context},
+        timeout::{ChangeAxis, Timeout},
     },
 };
 
@@ -92,13 +94,12 @@ impl DoubleJumping {
 
     #[inline]
     fn update_jump_cooldown(&mut self) {
-        self.cooldown_timeout = update_with_timeout(
-            self.cooldown_timeout,
-            COOLDOWN_TIMEOUT,
-            |timeout| timeout,
-            Timeout::default,
-            |timeout| timeout,
-        );
+        self.cooldown_timeout =
+            match next_timeout_lifecycle(self.cooldown_timeout, COOLDOWN_TIMEOUT) {
+                Lifecycle::Started(timeout) => timeout,
+                Lifecycle::Ended => Timeout::default(),
+                Lifecycle::Updated(timeout) => timeout,
+            };
     }
 }
 
@@ -123,47 +124,65 @@ pub fn update_double_jumping_context(
     double_jumping: DoubleJumping,
 ) -> Player {
     let moving = double_jumping.moving;
-    let cur_pos = state.last_known_pos.unwrap();
     let ignore_grappling = double_jumping.forced || state.should_disable_grappling();
-    let (x_distance, x_direction) = moving.x_distance_direction_from(true, cur_pos);
-    let (y_distance, y_direction) = moving.y_distance_direction_from(true, cur_pos);
     let is_intermediate = moving.is_destination_intermediate();
-    if !moving.timeout.started {
-        // Checks to perform a fall and returns to double jump
-        if !double_jumping.forced
-            && !is_intermediate
-            && !matches!(state.last_movement, Some(LastMovement::Falling))
-            && y_direction < 0
-            && y_distance >= FALLING_THRESHOLD
-            && state.is_stationary
-        {
-            return Player::Falling(moving.pos(cur_pos), cur_pos, true);
-        }
-        // Stalls until near stationary
-        if double_jumping.require_near_stationary
-            && (state.velocity.0 > X_NEAR_STATIONARY_VELOCITY_THRESHOLD
-                || state.velocity.1 > Y_NEAR_STATIONARY_VELOCITY_THRESHOLD)
-        {
-            return Player::DoubleJumping(double_jumping.moving(moving.pos(cur_pos)));
-        }
-        state.use_immediate_control_flow = true; // Double jumping does not use on_started
-        state.last_movement = Some(LastMovement::DoubleJumping);
-    }
+    let timeout = if double_jumping.forced {
+        TIMEOUT_FORCED
+    } else {
+        TIMEOUT
+    };
+    let axis = if double_jumping.forced {
+        // This ensures it won't double jump forever when jumping towards either
+        // edges of the map.
+        ChangeAxis::Horizontal
+    } else {
+        ChangeAxis::Both
+    };
 
-    update_moving_axis_context(
+    match next_moving_lifecycle_with_axis(
         moving,
-        cur_pos,
-        if double_jumping.forced {
-            TIMEOUT_FORCED
-        } else {
-            TIMEOUT
-        },
-        |moving| Player::DoubleJumping(double_jumping.moving(moving)),
-        Some(|| {
+        state.last_known_pos.expect("in positional context"),
+        timeout,
+        axis,
+    ) {
+        MovingLifecycle::Started(moving) => {
+            // Checks to perform a fall and returns to double jump
+            if !double_jumping.forced
+                && !is_intermediate
+                && state.last_movement != Some(LastMovement::Falling)
+                && state.is_stationary
+            {
+                let (y_distance, y_direction) = moving.y_distance_direction_from(true, moving.pos);
+                if y_direction < 0 && y_distance >= FALLING_THRESHOLD {
+                    return Player::Falling(moving, moving.pos, true);
+                }
+            }
+
+            // Stalls until near stationary
+            if double_jumping.require_near_stationary {
+                let (x_velocity, y_velocity) = state.velocity;
+                if x_velocity > X_NEAR_STATIONARY_VELOCITY_THRESHOLD
+                    || y_velocity > Y_NEAR_STATIONARY_VELOCITY_THRESHOLD
+                {
+                    return Player::DoubleJumping(
+                        double_jumping.moving(moving.timeout_started(false)),
+                    );
+                }
+            }
+
+            state.use_immediate_control_flow = true;
+            state.last_movement = Some(LastMovement::DoubleJumping);
+
+            Player::DoubleJumping(double_jumping.moving(moving))
+        }
+        MovingLifecycle::Ended(moving) => {
             let _ = context.keys.send_up(KeyKind::Right);
             let _ = context.keys.send_up(KeyKind::Left);
-        }),
-        |mut moving| {
+
+            Player::Moving(moving.dest, moving.exact, moving.intermediates)
+        }
+        MovingLifecycle::Updated(mut moving) => {
+            let (x_distance, x_direction) = moving.x_distance_direction_from(true, moving.pos);
             let mut double_jumping = double_jumping;
 
             if !moving.completed {
@@ -224,14 +243,17 @@ pub fn update_double_jumping_context(
                     )
                 },
                 || {
-                    if !ignore_grappling
-                        && moving.completed
-                        && x_distance <= GRAPPLING_THRESHOLD
-                        && y_direction > 0
-                    {
-                        debug!(target: "player", "performs grappling on double jump");
-                        Player::Grappling(moving.completed(false).timeout(Timeout::default()))
-                    } else if moving.completed {
+                    if !ignore_grappling && moving.completed && x_distance <= GRAPPLING_THRESHOLD {
+                        let (_, y_direction) = moving.y_distance_direction_from(true, moving.pos);
+                        if y_direction > 0 {
+                            debug!(target: "player", "performs grappling on double jump");
+                            return Player::Grappling(
+                                moving.completed(false).timeout(Timeout::default()),
+                            );
+                        }
+                    }
+
+                    if moving.completed {
                         Player::DoubleJumping(
                             double_jumping.moving(moving.timeout_current(TIMEOUT)),
                         )
@@ -240,15 +262,8 @@ pub fn update_double_jumping_context(
                     }
                 },
             )
-        },
-        if double_jumping.forced {
-            // This ensures it won't double jump forever when jumping towards either
-            // edges of the map.
-            ChangeAxis::Horizontal
-        } else {
-            ChangeAxis::Both
-        },
-    )
+        }
+    }
 }
 
 /// Handles [`PlayerAction`] during double jump.
