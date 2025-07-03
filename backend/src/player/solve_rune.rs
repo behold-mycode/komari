@@ -1,14 +1,15 @@
 use anyhow::Result;
 use platforms::windows::KeyKind;
 
-use super::{Player, PlayerState, actions::PlayerAction};
+use super::{
+    Player, PlayerState,
+    actions::PlayerAction,
+    timeout::{Lifecycle, next_timeout_lifecycle},
+};
 use crate::{
     context::Context,
     detect::{ArrowsCalibrating, ArrowsState},
-    player::{
-        on_action_state_mut,
-        timeout::{Timeout, update_with_timeout},
-    },
+    player::{on_action_state_mut, timeout::Timeout},
     task::{Task, Update, update_task},
 };
 
@@ -52,18 +53,16 @@ pub fn update_solving_rune_context(
             ..solving_rune
         })
     };
-    let next = update_with_timeout(
-        solving_rune.timeout,
-        TIMEOUT,
-        |timeout| {
+    let next = match next_timeout_lifecycle(solving_rune.timeout, TIMEOUT) {
+        Lifecycle::Started(timeout) => {
             let _ = context.keys.send(state.config.interact_key);
             update_timeout(timeout)
-        },
-        || {
+        }
+        Lifecycle::Ended => {
             // likely a spinning rune if the bot can't detect and timeout
             Player::Idle
-        },
-        |timeout| {
+        }
+        Lifecycle::Updated(timeout) => {
             if timeout.total <= SOLVE_START_TICK {
                 return update_timeout(timeout);
             }
@@ -93,8 +92,8 @@ pub fn update_solving_rune_context(
                     ..solving_rune
                 })
             }
-        },
-    );
+        }
+    };
 
     on_action_state_mut(
         state,
