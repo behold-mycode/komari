@@ -44,15 +44,15 @@ pub fn update_adjusting_context(
     match next_moving_lifecycle_with_axis(moving, cur_pos, MOVE_TIMEOUT, ChangeAxis::Both) {
         MovingLifecycle::Started(moving) => {
             // Checks to perform a fall and returns to walk
-            let (y_distance, y_direction) = moving.y_distance_direction_from(true, cur_pos);
-            if !matches!(state.last_movement, Some(LastMovement::Falling))
-                && x_distance >= ADJUSTING_MEDIUM_THRESHOLD
-                && y_direction < 0
-                && y_distance >= FALLING_THRESHOLD
-                && !is_intermediate
+            if !is_intermediate
+                && state.last_movement != Some(LastMovement::Falling)
                 && state.is_stationary
+                && x_distance >= ADJUSTING_MEDIUM_THRESHOLD
             {
-                return Player::Falling(moving, cur_pos, false);
+                let (y_distance, y_direction) = moving.y_distance_direction_from(true, cur_pos);
+                if y_direction < 0 && y_distance >= FALLING_THRESHOLD {
+                    return Player::Falling(moving, cur_pos, false);
+                }
             }
 
             state.use_immediate_control_flow = true;

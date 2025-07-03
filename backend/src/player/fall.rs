@@ -2,16 +2,18 @@ use opencv::core::Point;
 use platforms::windows::KeyKind;
 
 use super::{
-    Player, PlayerActionKey, PlayerState, actions::on_action_state, moving::Moving, use_key::UseKey,
+    Player, PlayerActionKey, PlayerState,
+    actions::on_action_state,
+    moving::Moving,
+    timeout::{MovingLifecycle, next_moving_lifecycle_with_axis},
+    use_key::UseKey,
 };
 use crate::{
     ActionKeyWith,
     context::Context,
     player::{
-        MOVE_TIMEOUT, PlayerAction,
-        actions::on_auto_mob_use_key_action,
-        state::LastMovement,
-        timeout::{ChangeAxis, update_moving_axis_context},
+        MOVE_TIMEOUT, PlayerAction, actions::on_auto_mob_use_key_action, state::LastMovement,
+        timeout::ChangeAxis,
     },
 };
 
@@ -49,78 +51,80 @@ pub fn update_falling_context(
     anchor: Point,
     timeout_on_complete: bool,
 ) -> Player {
-    let cur_pos = state.last_known_pos.unwrap();
-    let (y_distance, y_direction) = moving.y_distance_direction_from(true, cur_pos);
-    if !moving.timeout.started {
-        // Wait until stationary before doing a fall
-        if !state.is_stationary {
-            return Player::Falling(moving.pos(cur_pos), cur_pos, timeout_on_complete);
-        }
-        if y_direction >= 0 {
-            return Player::Moving(moving.dest, moving.exact, moving.intermediates);
-        }
-        state.last_movement = Some(LastMovement::Falling);
-    }
-
-    let y_changed = cur_pos.y - anchor.y;
-    let jump_key = state.config.jump_key;
-    let teleport_key = state.config.teleport_key;
-
-    update_moving_axis_context(
+    match next_moving_lifecycle_with_axis(
         moving,
-        cur_pos,
+        state.last_known_pos.expect("in positional context"),
         TIMEOUT,
-        |moving| {
+        ChangeAxis::Vertical,
+    ) {
+        MovingLifecycle::Started(moving) => {
+            // Stall until stationary before doing a fall by resetting timeout started
+            if !state.is_stationary {
+                return Player::Falling(
+                    moving.timeout_started(false),
+                    moving.pos,
+                    timeout_on_complete,
+                );
+            }
+
+            // Check if destination is already reached before starting
+            let (y_distance, y_direction) = moving.y_distance_direction_from(true, moving.pos);
+            if y_direction >= 0 {
+                return Player::Moving(moving.dest, moving.exact, moving.intermediates);
+            }
+            state.last_movement = Some(LastMovement::Falling);
+
+            // Do the fall
             let _ = context.keys.send_down(KeyKind::Down);
-            if let Some(key) = teleport_key
+            if let Some(key) = state.config.teleport_key
                 && y_distance < TELEPORT_FALL_THRESHOLD
             {
                 let _ = context.keys.send(key);
             } else {
-                let _ = context.keys.send(jump_key);
+                let _ = context.keys.send(state.config.jump_key);
             }
+
             Player::Falling(moving, anchor, timeout_on_complete)
-        },
-        Some(|| {
+        }
+        MovingLifecycle::Ended(moving) => {
             let _ = context.keys.send_up(KeyKind::Down);
-        }),
-        |mut moving| {
+            Player::Moving(moving.dest, moving.exact, moving.intermediates)
+        }
+        MovingLifecycle::Updated(mut moving) => {
             if moving.timeout.total == STOP_DOWN_KEY_TICK {
                 let _ = context.keys.send_up(KeyKind::Down);
             }
-            if !moving.completed && y_changed < 0 {
-                moving = moving.completed(true);
-            } else if moving.completed && timeout_on_complete {
+
+            if !moving.completed {
+                let y_changed = moving.pos.y - anchor.y;
+                if y_changed < 0 {
+                    moving = moving.completed(true);
+                }
+            } else if timeout_on_complete {
                 moving = moving.timeout_current(TIMEOUT);
             }
 
             on_action_state(
                 state,
                 |state, action| {
-                    on_player_action(
-                        context,
-                        cur_pos,
-                        action,
-                        moving,
-                        state.config.teleport_key.is_some(),
-                    )
+                    on_player_action(context, action, moving, state.config.teleport_key.is_some())
                 },
                 || Player::Falling(moving, anchor, timeout_on_complete),
             )
-        },
-        ChangeAxis::Vertical,
-    )
+        }
+    }
 }
 
 #[inline]
 fn on_player_action(
     context: &Context,
-    cur_pos: Point,
     action: PlayerAction,
     moving: Moving,
     has_teleport_key: bool,
 ) -> Option<(Player, bool)> {
+    let cur_pos = moving.pos;
     let (y_distance, y_direction) = moving.y_distance_direction_from(true, cur_pos);
+
     match action {
         PlayerAction::AutoMob(_) => {
             // Ignore `timeout_on_complete` for auto-mobbing intermediate destination
