@@ -173,8 +173,8 @@ mod tests {
 
         let lifecycle = next_moving_lifecycle_with_axis(moving, cur_pos, 5, ChangeAxis::Horizontal);
         match lifecycle {
-            MovingLifecycle::Started(m) => {
-                assert_eq!(m.timeout.current, 0);
+            MovingLifecycle::Updated(m) => {
+                assert_eq!(m.timeout.current, 1);
                 assert_eq!(m.pos, cur_pos);
             }
             _ => panic!("Expected Started variant"),

@@ -9,13 +9,12 @@ use super::{
         PlayerAction, PlayerActionKey, PlayerActionPingPong, on_ping_pong_double_jump_action,
     },
     double_jump::DoubleJumping,
+    timeout::{Lifecycle, next_timeout_lifecycle},
 };
 use crate::{
     ActionKeyDirection, ActionKeyWith, Class, KeyBinding, LinkKeyBinding,
     context::Context,
-    player::{
-        LastMovement, MOVE_TIMEOUT, Moving, Player, on_action_state_mut, update_with_timeout,
-    },
+    player::{LastMovement, MOVE_TIMEOUT, Moving, Player, on_action_state_mut},
 };
 
 /// The total number of ticks for changing direction before timing out.
@@ -213,31 +212,27 @@ pub fn update_use_key_context(
                 ActionKeyDirection::Right => KeyKind::Right,
                 ActionKeyDirection::Any => unreachable!(),
             };
-            update_with_timeout(
-                timeout,
-                CHANGE_DIRECTION_TIMEOUT,
-                |timeout| {
+            match next_timeout_lifecycle(timeout, CHANGE_DIRECTION_TIMEOUT) {
+                Lifecycle::Started(timeout) => {
                     let _ = context.keys.send_down(key);
                     Player::UseKey(UseKey {
                         stage: UseKeyStage::ChangingDirection(timeout),
                         ..use_key
                     })
-                },
-                || {
+                }
+                Lifecycle::Ended => {
                     let _ = context.keys.send_up(key);
                     state.last_known_direction = use_key.direction;
                     Player::UseKey(UseKey {
                         stage: UseKeyStage::Precondition,
                         ..use_key
                     })
-                },
-                |timeout| {
-                    Player::UseKey(UseKey {
-                        stage: UseKeyStage::ChangingDirection(timeout),
-                        ..use_key
-                    })
-                },
-            )
+                }
+                Lifecycle::Updated(timeout) => Player::UseKey(UseKey {
+                    stage: UseKeyStage::ChangingDirection(timeout),
+                    ..use_key
+                }),
+            }
         }
         UseKeyStage::EnsuringUseWith => match use_key.with {
             ActionKeyWith::Any => unreachable!(),
@@ -415,10 +410,9 @@ fn update_link_key(
             Class::Generic => 5,
         }
     };
-    update_with_timeout(
-        timeout,
-        link_key_timeout,
-        |timeout| {
+
+    match next_timeout_lifecycle(timeout, link_key_timeout) {
+        Lifecycle::Started(timeout) => {
             if let LinkKeyBinding::Before(key) = link_key {
                 let _ = context.keys.send(key.into());
             } else if let LinkKeyBinding::Along(key) = link_key {
@@ -428,8 +422,8 @@ fn update_link_key(
                 stage: UseKeyStage::Using(timeout, completed),
                 ..use_key
             })
-        },
-        || {
+        }
+        Lifecycle::Ended => {
             if let LinkKeyBinding::After(key) = link_key {
                 let _ = context.keys.send(key.into());
                 if matches!(class, Class::Blaster) && KeyKind::from(key) != jump_key {
@@ -442,8 +436,8 @@ fn update_link_key(
                 stage: UseKeyStage::Using(timeout, true),
                 ..use_key
             })
-        },
-        |timeout| {
+        }
+        Lifecycle::Updated(timeout) => {
             if matches!(link_key, LinkKeyBinding::Along(_))
                 && timeout.total == LINK_ALONG_PRESS_TICK
             {
@@ -453,8 +447,8 @@ fn update_link_key(
                 stage: UseKeyStage::Using(timeout, completed),
                 ..use_key
             })
-        },
-    )
+        }
+    }
 }
 
 #[inline]

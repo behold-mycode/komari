@@ -109,11 +109,6 @@ impl Moving {
     }
 
     #[inline]
-    pub fn pos(self, pos: Point) -> Moving {
-        Moving { pos, ..self }
-    }
-
-    #[inline]
     pub fn completed(self, completed: bool) -> Moving {
         Moving { completed, ..self }
     }
