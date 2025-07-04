@@ -1,7 +1,7 @@
 use super::{
     Player, PlayerAction, PlayerState,
     actions::on_action_state_mut,
-    timeout::{Timeout, update_with_timeout},
+    timeout::{Lifecycle, Timeout, next_timeout_lifecycle},
 };
 
 /// Updates the [`Player::Stalling`] contextual state
@@ -19,14 +19,11 @@ pub fn update_stalling_context(
     timeout: Timeout,
     max_timeout: u32,
 ) -> Player {
-    let update = |timeout| Player::Stalling(timeout, max_timeout);
-    let next = update_with_timeout(
-        timeout,
-        max_timeout,
-        update,
-        || state.stalling_timeout_state.take().unwrap_or(Player::Idle),
-        update,
-    );
+    let next = match next_timeout_lifecycle(timeout, max_timeout) {
+        Lifecycle::Started(timeout) => Player::Stalling(timeout, max_timeout),
+        Lifecycle::Ended => state.stalling_timeout_state.take().unwrap_or(Player::Idle),
+        Lifecycle::Updated(timeout) => Player::Stalling(timeout, max_timeout),
+    };
 
     on_action_state_mut(
         state,

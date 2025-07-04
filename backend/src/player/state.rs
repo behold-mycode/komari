@@ -8,7 +8,9 @@ use rand::seq::IteratorRandom;
 
 use super::{
     DOUBLE_JUMP_THRESHOLD, JUMP_THRESHOLD, MOVE_TIMEOUT, Player, PlayerAction,
-    double_jump::DOUBLE_JUMP_AUTO_MOB_THRESHOLD, fall::FALLING_THRESHOLD, timeout::Timeout,
+    double_jump::DOUBLE_JUMP_AUTO_MOB_THRESHOLD,
+    fall::FALLING_THRESHOLD,
+    timeout::{Lifecycle, Timeout, next_timeout_lifecycle},
 };
 use crate::{
     ActionKeyDirection, Class,
@@ -19,7 +21,6 @@ use crate::{
     detect::ArrowsState,
     minimap::Minimap,
     network::NotificationKind,
-    player::timeout::update_with_timeout,
     task::{Task, Update, update_detection_task},
 };
 
@@ -890,13 +891,12 @@ impl PlayerState {
         }
         self.update_velocity(pos, context.tick);
 
-        let (is_stationary, is_stationary_timeout) = update_with_timeout(
-            self.is_stationary_timeout,
-            MOVE_TIMEOUT,
-            |timeout| (false, timeout),
-            || (true, self.is_stationary_timeout),
-            |timeout| (false, timeout),
-        );
+        let (is_stationary, is_stationary_timeout) =
+            match next_timeout_lifecycle(self.is_stationary_timeout, MOVE_TIMEOUT) {
+                Lifecycle::Started(timeout) => (false, timeout),
+                Lifecycle::Ended => (true, self.is_stationary_timeout),
+                Lifecycle::Updated(timeout) => (false, timeout),
+            };
         self.is_stationary = is_stationary;
         self.is_stationary_timeout = is_stationary_timeout;
         self.last_known_pos = Some(pos);
@@ -958,20 +958,17 @@ impl PlayerState {
         debug_assert!(self.rune_failed_count < MAX_RUNE_FAILED_COUNT);
         debug_assert!(!self.rune_cash_shop);
         self.rune_validate_timeout = self.rune_validate_timeout.and_then(|timeout| {
-            update_with_timeout(
-                timeout,
-                VALIDATE_TIMEOUT,
-                Some,
-                || {
+            match next_timeout_lifecycle(timeout, VALIDATE_TIMEOUT) {
+                Lifecycle::Ended => {
                     if matches!(context.buffs[BuffKind::Rune], Buff::No) {
                         self.track_rune_fail_count();
                     } else {
                         self.rune_failed_count = 0;
                     }
                     None
-                },
-                Some,
-            )
+                }
+                Lifecycle::Started(timeout) | Lifecycle::Updated(timeout) => Some(timeout),
+            }
         });
     }
 

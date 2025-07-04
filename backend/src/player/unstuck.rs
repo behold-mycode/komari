@@ -1,11 +1,14 @@
 use opencv::core::Point;
 use platforms::windows::KeyKind;
 
-use super::{PlayerState, timeout::Timeout};
+use super::{
+    PlayerState,
+    timeout::{Lifecycle, Timeout, next_timeout_lifecycle},
+};
 use crate::{
     context::Context,
     minimap::Minimap,
-    player::{MOVE_TIMEOUT, Player, timeout::update_with_timeout},
+    player::{MOVE_TIMEOUT, Player},
     task::{Update, update_detection_task},
 };
 
@@ -36,30 +39,30 @@ pub fn update_unstucking_context(
     let Minimap::Idle(idle) = context.minimap else {
         return Player::Detecting;
     };
-
-    if !timeout.started && !gamba_mode && has_settings.is_none() {
-        let Update::Ok(has_settings) =
-            update_detection_task(context, 0, &mut state.unstuck_task, move |detector| {
-                Ok(detector.detect_esc_settings())
-            })
-        else {
-            return Player::Unstucking(timeout, has_settings, gamba_mode);
-        };
-        return Player::Unstucking(timeout, Some(has_settings), gamba_mode);
-    }
-
     let pos = state
         .last_known_pos
         .map(|pos| Point::new(pos.x, idle.bbox.height - pos.y));
     let gamba_mode = gamba_mode || pos.is_none();
 
-    update_with_timeout(
-        timeout,
-        MOVE_TIMEOUT,
-        |timeout| {
+    match next_timeout_lifecycle(timeout, MOVE_TIMEOUT) {
+        Lifecycle::Started(timeout) => {
+            let has_settings = if !gamba_mode && has_settings.is_none() {
+                match update_detection_task(context, 0, &mut state.unstuck_task, move |detector| {
+                    Ok(detector.detect_esc_settings())
+                }) {
+                    Update::Ok(has_settings) => Some(has_settings),
+                    Update::Err(_) | Update::Pending => {
+                        // Stall until ESC settings detection complete
+                        return Player::Unstucking(Timeout::default(), has_settings, gamba_mode);
+                    }
+                }
+            } else {
+                None
+            };
             if has_settings.unwrap_or_default() || (gamba_mode && context.rng.random_bool(0.5)) {
                 let _ = context.keys.send(KeyKind::Esc);
             }
+
             let to_right = match (gamba_mode, pos) {
                 (true, _) => context.rng.random_bool(0.5),
                 (_, Some(Point { y, .. })) if y <= Y_IGNORE_THRESHOLD => {
@@ -73,14 +76,16 @@ pub fn update_unstucking_context(
             } else {
                 let _ = context.keys.send_down(KeyKind::Left);
             }
+
             Player::Unstucking(timeout, has_settings, gamba_mode)
-        },
-        || {
+        }
+        Lifecycle::Ended => {
             let _ = context.keys.send_up(KeyKind::Right);
             let _ = context.keys.send_up(KeyKind::Left);
+
             Player::Detecting
-        },
-        |timeout| {
+        }
+        Lifecycle::Updated(timeout) => {
             let send_space = match (gamba_mode, pos) {
                 (true, _) => true,
                 (_, Some(pos)) if pos.y > Y_IGNORE_THRESHOLD => true,
@@ -89,7 +94,8 @@ pub fn update_unstucking_context(
             if send_space {
                 let _ = context.keys.send(state.config.jump_key);
             }
+
             Player::Unstucking(timeout, has_settings, gamba_mode)
-        },
-    )
+        }
+    }
 }

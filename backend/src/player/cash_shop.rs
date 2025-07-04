@@ -3,7 +3,7 @@ use platforms::windows::KeyKind;
 
 use super::{
     Player, PlayerState,
-    timeout::{Timeout, update_with_timeout},
+    timeout::{Lifecycle, Timeout, next_timeout_lifecycle},
 };
 use crate::{bridge::MouseAction, context::Context};
 
@@ -35,13 +35,13 @@ pub fn update_cash_shop_context(
             Player::CashShopThenExit(timeout, next)
         }
         CashShop::Entered => {
-            update_with_timeout(
-                timeout,
-                305, // exits after 10 secs
-                |timeout| Player::CashShopThenExit(timeout, cash_shop),
-                || Player::CashShopThenExit(timeout, CashShop::Exitting),
-                |timeout| Player::CashShopThenExit(timeout, cash_shop),
-            )
+            // Exit after 10 secs
+            match next_timeout_lifecycle(timeout, 305) {
+                Lifecycle::Ended => Player::CashShopThenExit(timeout, CashShop::Exitting),
+                Lifecycle::Started(timeout) | Lifecycle::Updated(timeout) => {
+                    Player::CashShopThenExit(timeout, cash_shop)
+                }
+            }
         }
         CashShop::Exitting => {
             let next = if context.detector_unwrap().detect_player_in_cash_shop() {
@@ -65,13 +65,13 @@ pub fn update_cash_shop_context(
             }
         }
         CashShop::Stalling => {
-            update_with_timeout(
-                timeout,
-                90, // returns after 3 secs
-                |timeout| Player::CashShopThenExit(timeout, cash_shop),
-                || Player::Idle,
-                |timeout| Player::CashShopThenExit(timeout, cash_shop),
-            )
+            // Return after 3 secs
+            match next_timeout_lifecycle(timeout, 90) {
+                Lifecycle::Ended => Player::Idle,
+                Lifecycle::Started(timeout) | Lifecycle::Updated(timeout) => {
+                    Player::CashShopThenExit(timeout, cash_shop)
+                }
+            }
         }
     }
 }

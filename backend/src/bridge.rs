@@ -72,6 +72,8 @@ pub trait KeySender: Debug {
 
     fn send_down(&self, kind: KeyKind) -> Result<()>;
 
+    fn all_keys_cleared(&self) -> bool;
+
     fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
@@ -294,6 +296,11 @@ impl KeySender for DefaultKeySender {
 
     fn send_down(&self, kind: KeyKind) -> Result<()> {
         self.send_down_inner(kind)
+    }
+
+    #[inline]
+    fn all_keys_cleared(&self) -> bool {
+        self.delay_map.borrow().is_empty()
     }
 
     #[inline]
