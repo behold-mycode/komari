@@ -27,8 +27,8 @@ env:
   VCPKG_INSTALLED_DIR: ${{ github.workspace }}/vcpkg/installed
   VCPKGRS_TRIPLET: x64-windows-static
 
-  PROTOC_VERSION: "30.2.0"
-  LLVM_VERSION: "20.1.2"
+  PROTOC_VERSION: "31.1.0"
+  LLVM_VERSION: "20.1.7"
   CARGO_TERM_COLOR: always
   SCCACHE_GHA_ENABLED: "true"
   RUST_BACKTRACE: 1
