@@ -43,10 +43,6 @@ pub fn update_solving_rune_context(
     // debug_assert!(state.rune_failed_count < MAX_RUNE_FAILED_COUNT);
     // debug_assert!(!state.rune_cash_shop);
 
-    if !solving_rune.timeout.started && !state.is_stationary {
-        return Player::SolvingRune(solving_rune);
-    }
-
     let update_timeout = |timeout| {
         Player::SolvingRune(SolvingRune {
             timeout,
@@ -54,7 +50,12 @@ pub fn update_solving_rune_context(
         })
     };
     let next = match next_timeout_lifecycle(solving_rune.timeout, TIMEOUT) {
-        Lifecycle::Started(timeout) => {
+        Lifecycle::Started(mut timeout) => {
+            if !state.is_stationary || !context.keys.all_keys_cleared() {
+                timeout.started = false;
+                return Player::SolvingRune(solving_rune);
+            }
+
             let _ = context.keys.send(state.config.interact_key);
             update_timeout(timeout)
         }
