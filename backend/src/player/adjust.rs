@@ -88,7 +88,7 @@ pub fn update_adjusting_context(
             {
                 let (y_distance, y_direction) = moving.y_distance_direction_from(true, cur_pos);
                 if y_direction < 0 && y_distance >= FALLING_THRESHOLD {
-                    return Player::Falling(moving, cur_pos, false);
+                    return Player::Falling(moving.timeout_started(false), cur_pos, false);
                 }
             }
 

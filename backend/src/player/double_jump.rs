@@ -154,7 +154,7 @@ pub fn update_double_jumping_context(
             {
                 let (y_distance, y_direction) = moving.y_distance_direction_from(true, moving.pos);
                 if y_direction < 0 && y_distance >= FALLING_THRESHOLD {
-                    return Player::Falling(moving, moving.pos, true);
+                    return Player::Falling(moving.timeout_started(false), moving.pos, true);
                 }
             }
 
