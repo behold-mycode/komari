@@ -216,21 +216,31 @@ impl Moving {
     /// Determines whether auto mobbing intermediate destination can be skipped.
     #[inline]
     pub fn auto_mob_can_skip_current_destination(&self, state: &PlayerState) -> bool {
-        state.has_auto_mob_action_only()
-            && self.intermediates.is_some_and(|intermediates| {
-                if !intermediates.has_next() {
-                    return false;
-                }
-                let pos = state.last_known_pos.unwrap();
-                let (x_distance, _) = self.x_distance_direction_from(true, pos);
-                let (y_distance, y_direction) = self.y_distance_direction_from(true, pos);
-                let y_skippable = (matches!(state.last_movement, Some(LastMovement::Falling))
-                    && y_direction >= 0)
-                    || (matches!(state.last_movement, Some(LastMovement::UpJumping))
-                        && y_direction <= 0)
-                    || y_distance.abs() < JUMP_THRESHOLD;
-                x_distance < DOUBLE_JUMP_THRESHOLD && y_skippable
-            })
+        if !state.has_auto_mob_action_only() {
+            return false;
+        }
+
+        let Some(intermediates) = self.intermediates else {
+            return false;
+        };
+        if !intermediates.has_next() {
+            return false;
+        }
+
+        let pos = state.last_known_pos.expect("in positional context");
+        let (x_distance, _) = self.x_distance_direction_from(true, pos);
+        let (y_distance, y_direction) = self.y_distance_direction_from(true, pos);
+
+        let did_fall_down =
+            matches!(state.last_movement, Some(LastMovement::Falling)) && y_direction >= 0;
+        let did_up_jump =
+            matches!(state.last_movement, Some(LastMovement::UpJumping)) && y_direction <= 0;
+        let y_within_jump = y_distance < JUMP_THRESHOLD;
+
+        let can_skip_y = did_fall_down || did_up_jump || y_within_jump;
+        let can_skip_x = x_distance < DOUBLE_JUMP_THRESHOLD;
+
+        can_skip_x && can_skip_y
     }
 }
 
@@ -476,4 +486,121 @@ pub fn find_intermediate_points(
         current: 0,
         inner: array,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::assert_matches::assert_matches;
+
+    use opencv::core::Point;
+
+    use super::*;
+    use crate::player::Player;
+
+    #[test]
+    fn update_moving_to_double_jump() {
+        let context = Context::new(None, None);
+        let mut state = PlayerState::default();
+        state.last_known_pos = Some(Point::new(0, 0));
+
+        let dest = Point::new(100, 0); // Large x-distance triggers double jump
+        let player = update_moving_context(&context, &mut state, dest, false, None);
+
+        assert_matches!(player, Player::DoubleJumping(_));
+    }
+
+    #[test]
+    fn update_moving_to_adjusting() {
+        let context = Context::new(None, None);
+        let mut state = PlayerState::default();
+        state.last_known_pos = Some(Point::new(0, 0));
+
+        let dest = Point::new(20, 0); // Less than double jump x-distance
+        let player = update_moving_context(&context, &mut state, dest, false, None);
+
+        assert_matches!(player, Player::Adjusting(_));
+    }
+
+    #[test]
+    fn update_moving_to_grappling() {
+        let context = Context::new(None, None);
+        let mut state = PlayerState::default();
+        state.config.grappling_key = Some(KeyKind::default());
+        state.last_known_pos = Some(Point::new(0, 0));
+
+        let dest = Point::new(0, GRAPPLING_THRESHOLD + 10);
+        let player = update_moving_context(&context, &mut state, dest, true, None);
+
+        assert_matches!(player, Player::Grappling(_));
+    }
+
+    #[test]
+    fn update_moving_to_upjump() {
+        let context = Context::new(None, None);
+        let mut state = PlayerState::default();
+        state.last_known_pos = Some(Point::new(0, 0));
+
+        let dest = Point::new(0, 20); // y-distance below grappling
+        let player = update_moving_context(&context, &mut state, dest, true, None);
+
+        assert_matches!(player, Player::UpJumping(_));
+    }
+
+    #[test]
+    fn update_moving_to_jumping() {
+        let context = Context::new(None, None);
+        let cur_pos = Point::new(100, 100);
+        let dest = Point::new(100, 107);
+        let mut state = PlayerState::default();
+        state.last_known_pos = Some(cur_pos);
+
+        let player = update_moving_context(&context, &mut state, dest, false, None);
+
+        assert_matches!(player, Player::Jumping(_));
+    }
+
+    #[test]
+    fn update_moving_to_falling() {
+        let context = Context::new(None, None);
+        let cur_pos = Point::new(100, 100);
+        let dest = Point::new(100, 50);
+        let mut state = PlayerState::default();
+        state.last_known_pos = Some(cur_pos);
+
+        let player = update_moving_context(&context, &mut state, dest, false, None);
+
+        assert_matches!(player, Player::Falling(_, _, _));
+    }
+
+    #[test]
+    fn update_moving_to_idle_when_destination_reached() {
+        let context = Context::new(None, None);
+        let mut state = PlayerState::default();
+        let pos = Point::new(100, 200);
+        state.last_known_pos = Some(pos);
+
+        let player = update_moving_context(&context, &mut state, pos, true, None);
+
+        assert_matches!(player, Player::Idle);
+    }
+
+    #[test]
+    fn update_moving_with_intermediate_points_triggers_next_move() {
+        let context = Context::new(None, None);
+        let mut state = PlayerState::default();
+        let pos = Point::new(50, 0);
+        state.last_known_pos = Some(pos);
+
+        let intermediates = MovingIntermediates {
+            current: 1,
+            inner: Array::from_iter([
+                (pos, MovementHint::Infer, false),
+                (Point::new(100, 0), MovementHint::Infer, true),
+            ]),
+        };
+
+        let player = update_moving_context(&context, &mut state, pos, true, Some(intermediates));
+
+        assert_matches!(player, Player::Moving(Point { x: 100, y: 0 }, _, _));
+    }
 }
