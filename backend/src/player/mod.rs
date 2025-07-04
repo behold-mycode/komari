@@ -1,5 +1,5 @@
 use actions::{on_action, on_action_state_mut};
-use adjust::update_adjusting_context;
+use adjust::{Adjusting, update_adjusting_context};
 use cash_shop::{CashShop, update_cash_shop_context};
 use double_jump::{DoubleJumping, update_double_jumping_context};
 use fall::update_falling_context;
@@ -71,7 +71,7 @@ pub enum Player {
     /// Movement-related coordinator state.
     Moving(Point, bool, Option<MovingIntermediates>),
     /// Performs walk or small adjustment x-wise action.
-    Adjusting(Moving),
+    Adjusting(Adjusting),
     /// Performs double jump action.
     DoubleJumping(DoubleJumping),
     /// Performs a grappling action.
@@ -114,7 +114,7 @@ impl Player {
                 forced: false,
                 ..
             })
-            | Player::Adjusting(moving) => {
+            | Player::Adjusting(Adjusting { moving, .. }) => {
                 let (distance, _) =
                     moving.x_distance_direction_from(true, cur_pos.unwrap_or(moving.pos));
                 distance >= OVERRIDABLE_DISTANCE
@@ -270,7 +270,7 @@ fn update_positional_context(
         Player::Moving(dest, exact, intermediates) => {
             update_moving_context(context, state, dest, exact, intermediates)
         }
-        Player::Adjusting(moving) => update_adjusting_context(context, state, moving),
+        Player::Adjusting(adjusting) => update_adjusting_context(context, state, adjusting),
         Player::DoubleJumping(double_jumping) => {
             update_double_jumping_context(context, state, double_jumping)
         }

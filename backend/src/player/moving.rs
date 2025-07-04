@@ -16,7 +16,7 @@ use crate::{
     context::Context,
     pathing::{MovementHint, PlatformWithNeighbors, find_points_with},
     player::{
-        adjust::{ADJUSTING_MEDIUM_THRESHOLD, ADJUSTING_SHORT_THRESHOLD},
+        adjust::{ADJUSTING_MEDIUM_THRESHOLD, ADJUSTING_SHORT_THRESHOLD, Adjusting},
         grapple::GRAPPLING_THRESHOLD,
         on_action,
         solve_rune::SolvingRune,
@@ -301,7 +301,11 @@ pub fn update_moving_context(
         && ((!disable_adjusting && x_distance >= ADJUSTING_MEDIUM_THRESHOLD)
             || (exact && x_distance >= ADJUSTING_SHORT_THRESHOLD))
     {
-        return abort_action_on_state_repeat(Player::Adjusting(moving), context, state);
+        return abort_action_on_state_repeat(
+            Player::Adjusting(Adjusting::new(moving)),
+            context,
+            state,
+        );
     }
 
     // Check to grapple
