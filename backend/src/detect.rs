@@ -2000,7 +2000,8 @@ fn detect_template_single<T: ToInputArray + MatTraitConst>(
     detect_template_multiple(mat, template, mask, offset, 1, threshold)
         .into_iter()
         .next()
-        .unwrap()
+        .ok_or(anyhow!("no match"))
+        .flatten()
 }
 
 /// Detects multiple matches from `template` with the given BGR image `Mat`.
