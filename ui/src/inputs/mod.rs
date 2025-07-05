@@ -6,7 +6,8 @@ mod numbers;
 pub use {keys::*, numbers::*};
 
 // Pre-styled
-pub(crate) const INPUT_LABEL_CLASS: &str = "label";
+pub(crate) const INPUT_LABEL_CLASS: &str =
+    "label inline-block whitespace-nowrap overflow-hidden text-ellipsis";
 pub(crate) const INPUT_DIV_CLASS: &str = "flex flex-col gap-1";
 pub(crate) const INPUT_CLASS: &str = "h-6 paragraph-xs outline-none px-1 border border-gray-600 disabled:text-gray-600 disabled:cursor-not-allowed";
 

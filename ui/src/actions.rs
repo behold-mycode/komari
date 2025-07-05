@@ -167,6 +167,14 @@ pub fn Actions() -> Element {
         *action = new_action;
         coroutine.send(ActionUpdate::Update(actions));
     });
+    let copy_action = use_callback(move |kind| match kind {
+        ActionInputKind::Edit(action, _) => {
+            popup_input_kind.set(Some(PopupInputKind::Action(ActionInputKind::Add(action))));
+        }
+        ActionInputKind::Add(_) | ActionInputKind::PingPongOrAutoMobbing(_) => {
+            unreachable!()
+        }
+    });
 
     // Edit mobbing key/bound callbacks
     let edit_mobbing_key = use_callback(move |key| {
@@ -244,6 +252,9 @@ pub fn Actions() -> Element {
                 PopupInputKind::Action(kind) => rsx! {
                     PopupActionInput {
                         actions: minimap_preset_actions,
+                        on_copy: move |_| {
+                            copy_action(kind);
+                        },
                         on_cancel: move |_| {
                             popup_input_kind.take();
                         },
@@ -1097,6 +1108,7 @@ fn PopupBoundInput(
 #[component]
 fn PopupActionInput(
     actions: ReadOnlySignal<Vec<Action>>,
+    on_copy: EventHandler<()>,
     on_cancel: EventHandler,
     on_value: EventHandler<ActionInputValueKind>,
     kind: ActionInputKind,
@@ -1126,6 +1138,7 @@ fn PopupActionInput(
         kind,
         ActionInputKind::Edit(_, _) | ActionInputKind::PingPongOrAutoMobbing(_)
     );
+    let copyable = matches!(kind, ActionInputKind::Edit(_, _));
     let can_create_linked_action = match kind {
         ActionInputKind::Add(_) | ActionInputKind::Edit(_, _) => match action.condition() {
             ActionCondition::EveryMillis(_)
@@ -1165,12 +1178,12 @@ fn PopupActionInput(
                 section_text,
                 switchable,
                 modifying,
+                copyable,
                 can_create_linked_action,
                 can_have_position: switchable,
                 can_have_direction: switchable,
-                on_cancel: move |_| {
-                    on_cancel(());
-                },
+                on_copy,
+                on_cancel,
                 on_value: move |(action, condition)| {
                     match kind {
                         ActionInputKind::Add(_) => {
@@ -1211,9 +1224,11 @@ fn ActionInput(
     section_text: String,
     switchable: bool,
     modifying: bool,
+    copyable: bool,
     can_create_linked_action: bool,
     can_have_position: bool,
     can_have_direction: bool,
+    on_copy: EventHandler<()>,
     on_cancel: EventHandler,
     on_value: EventHandler<(Action, ActionCondition)>,
     value: Action,
@@ -1232,32 +1247,42 @@ fn ActionInput(
     rsx! {
         div { class: "bg-gray-900 max-w-xl w-full h-full max-h-120 px-2 m-auto",
             Section { name: section_text, class: "relative h-full",
-                if switchable {
-                    Button {
-                        text: button_text(),
-                        kind: ButtonKind::Primary,
-                        on_click: move |_| {
-                            if discriminant(&value) != discriminant(&*action.peek()) {
-                                action.set(value);
-                            } else if matches!(value, Action::Move(_)) {
-                                action
-                                    .set(
-                                        Action::Key(ActionKey {
-                                            condition: value.condition(),
-                                            ..ActionKey::default()
-                                        }),
-                                    );
-                            } else {
-                                action
-                                    .set(
-                                        Action::Move(ActionMove {
-                                            condition: value.condition(),
-                                            ..ActionMove::default()
-                                        }),
-                                    );
-                            }
-                        },
-                        class: "flex-none label border-b border-gray-600",
+                div { class: "flex-none grid auto-cols-auto grid-flow-col",
+                    if switchable {
+                        Button {
+                            text: button_text(),
+                            kind: ButtonKind::Primary,
+                            on_click: move |_| {
+                                if discriminant(&value) != discriminant(&*action.peek()) {
+                                    action.set(value);
+                                } else if matches!(value, Action::Move(_)) {
+                                    action
+                                        .set(
+                                            Action::Key(ActionKey {
+                                                condition: value.condition(),
+                                                ..ActionKey::default()
+                                            }),
+                                        );
+                                } else {
+                                    action
+                                        .set(
+                                            Action::Move(ActionMove {
+                                                condition: value.condition(),
+                                                ..ActionMove::default()
+                                            }),
+                                        );
+                                }
+                            },
+                            class: "label border-b border-gray-600",
+                        }
+                    }
+                    if copyable {
+                        Button {
+                            text: "Copy",
+                            kind: ButtonKind::Primary,
+                            on_click: on_copy,
+                            class: "label border-b border-gray-600",
+                        }
                     }
                 }
                 match action() {
