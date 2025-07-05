@@ -472,7 +472,7 @@ fn detect_mobs(
     static MOB_MODEL: LazyLock<Mutex<Session>> = LazyLock::new(|| {
         Mutex::new(
             build_session(include_bytes!(env!("MOB_MODEL")))
-                .expect("unable to build mob detection session"),
+                .expect("build mob detection session successfully"),
         )
     });
 
@@ -663,7 +663,7 @@ fn detect_minimap(mat: &impl MatTraitConst, border_threshold: u8) -> Result<Rect
     static MINIMAP_MODEL: LazyLock<Mutex<Session>> = LazyLock::new(|| {
         Mutex::new(
             build_session(include_bytes!(env!("MINIMAP_MODEL")))
-                .expect("unable to build minimap detection session"),
+                .expect("build minimap detection session successfully"),
         )
     });
 
@@ -1253,7 +1253,7 @@ fn detect_rune_arrows_with_scores_regions(mat: &impl MatTraitConst) -> Vec<(Rect
     static RUNE_MODEL: LazyLock<Mutex<Session>> = LazyLock::new(|| {
         Mutex::new(
             build_session(include_bytes!(env!("RUNE_MODEL")))
-                .expect("unable to build rune detection session"),
+                .expect("build rune detection session successfully"),
         )
     });
 
@@ -2127,7 +2127,7 @@ fn extract_texts(mat: &impl MatTraitConst, bboxes: &[Rect]) -> Vec<String> {
                             .collect::<Vector<String>>(),
                     )
                 })
-                .expect("unable to build text recognition model"),
+                .expect("build text recognition model successfully"),
         )
     });
 
@@ -2163,7 +2163,7 @@ fn extract_text_bboxes(
     static TEXT_DETECTION_MODEL: LazyLock<Mutex<Session>> = LazyLock::new(|| {
         Mutex::new(
             build_session(include_bytes!(env!("TEXT_DETECTION_MODEL")))
-                .expect("unable to build minimap name detection session"),
+                .expect("build text detection session normally"),
         )
     });
 

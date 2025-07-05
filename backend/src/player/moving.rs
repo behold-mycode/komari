@@ -66,7 +66,7 @@ impl MovingIntermediates {
 pub struct Moving {
     /// The player's previous position.
     ///
-    /// It will be updated to current position after calling [`update_moving_axis_timeout`].
+    /// It will be updated to current position after calling [`next_moving_lifecycle_with_axis`].
     /// Before calling this function, it will always be the previous position in relative to
     /// [`PlayerState::last_known_pos`].
     pub pos: Point,
