@@ -285,11 +285,7 @@ pub fn Actions() -> Element {
                             },
                             on_value: move |(mut platform, index): (Platform, Option<usize>)| {
                                 popup_input_kind.take();
-                                platform.x_end = if platform.x_end <= platform.x_start {
-                                    platform.x_start + 1
-                                } else {
-                                    platform.x_end
-                                };
+                                update_valid_platform_end(&mut platform);
                                 if let Some(index) = index {
                                     edit_platform((platform, index));
                                 } else {
@@ -498,22 +494,20 @@ fn SectionPlatforms(
 
             if settings.platform_start_key.enabled && settings.platform_start_key.key == key {
                 platform.x_start = position.peek().0;
+                update_valid_platform_end(&mut platform);
                 platform.y = position.peek().1;
                 continue;
             }
 
             if settings.platform_end_key.enabled && settings.platform_end_key.key == key {
                 platform.x_end = position.peek().0;
-                platform.x_end = if platform.x_end <= platform.x_start {
-                    platform.x_start + 1
-                } else {
-                    platform.x_end
-                };
+                update_valid_platform_end(&mut platform);
                 platform.y = position.peek().1;
                 continue;
             }
 
             if settings.platform_add_key.enabled && settings.platform_add_key.key == key {
+                update_valid_platform_end(&mut platform);
                 add_platform(platform);
                 continue;
             }
@@ -2081,4 +2075,13 @@ fn filter_actions(actions: Vec<Action>, condition_filter: ActionCondition) -> Ve
     }
 
     filtered
+}
+
+#[inline]
+fn update_valid_platform_end(platform: &mut Platform) {
+    platform.x_end = if platform.x_end <= platform.x_start {
+        platform.x_start + 1
+    } else {
+        platform.x_end
+    };
 }
