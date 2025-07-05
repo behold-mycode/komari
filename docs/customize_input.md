@@ -4,7 +4,7 @@ The bot currently does not use advanced input method such as a driver like `Inte
   - Check this [example](https://github.com/sasanquaa/maple-bot/tree/master/examples/python):
       - Note that this example is tested on the same PC so `http://localhost:5001` is used
       - If you host the input server on the game PC and the bot runs on a different PC, you need to change the IP, port-forward, etc.. so that the bot can connect to the input server on the game PC
-      - Downloading `app-debug` version if needed to check if the bot connects successfully by looking at the log
+      - Downloading `app-debug-[cpu/gpu].zip` version if needed to check if the bot connects successfully by looking at the log
   - (Just an idea, not tested) For local PC, using Unix socket can likely improve input latency instead of gRPC default HTTP
 
 ![Customize Input](https://github.com/sasanquaa/komari/blob/master/.github/images/customize_input.png?raw=true)
