@@ -18,6 +18,17 @@ const SOLVE_START_TICK: u32 = 30;
 
 const PRESS_KEY_INTERVAL: u32 = 8;
 
+/// Representing the current stage of rune solving.
+#[derive(Debug, Clone, Copy)]
+pub enum RuneStage {
+    // Finds the region containing the four arrows.
+    FindRegion(Timeout, u32),
+    // Solves for the rune arrows.
+    Solving(Timeout),
+    // Presses the keys.
+    PressKeys(Timeout, usize, [KeyKind; 4]),
+}
+
 #[derive(Clone, Copy, Default, Debug)]
 pub struct SolvingRune {
     timeout: Timeout,
@@ -59,10 +70,7 @@ pub fn update_solving_rune_context(
             let _ = context.keys.send(state.config.interact_key);
             update_timeout(timeout)
         }
-        Lifecycle::Ended => {
-            // likely a spinning rune if the bot can't detect and timeout
-            Player::Idle
-        }
+        Lifecycle::Ended => Player::Idle,
         Lifecycle::Updated(timeout) => {
             if timeout.total <= SOLVE_START_TICK {
                 return update_timeout(timeout);
