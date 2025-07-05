@@ -111,6 +111,10 @@ pub fn find_neighbors(
     let mut vec = Vec::with_capacity(platforms.len());
     for i in 0..platforms.len() {
         let current = platforms[i];
+        if current.xs.is_empty() {
+            continue;
+        }
+
         let mut neighbors = Array::new();
         for j in (0..i).chain(i + 1..platforms.len()) {
             if platforms_reachable(
