@@ -88,7 +88,7 @@ pub fn update_adjusting_context(
             {
                 let (y_distance, y_direction) = moving.y_distance_direction_from(true, cur_pos);
                 if y_direction < 0 && y_distance >= FALLING_THRESHOLD {
-                    return Player::Falling(moving.timeout_started(false), cur_pos, false);
+                    return Player::Falling(moving.timeout_started(false), cur_pos, true);
                 }
             }
 
@@ -231,4 +231,242 @@ fn on_player_action(
             unreachable!()
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::assert_matches::assert_matches;
+
+    use mockall::predicate::eq;
+    use opencv::core::Point;
+
+    use super::*;
+    use crate::{
+        bridge::MockKeySender,
+        player::{Player, PlayerState},
+    };
+
+    #[test]
+    fn update_adjusting_context_started_falling() {
+        let context = Context::new(None, None);
+        let pos = Point { x: 0, y: 10 };
+        let dest = Point { x: 10, y: 0 };
+        let mut state = PlayerState::default();
+        state.last_known_pos = Some(pos);
+        state.is_stationary = true;
+        let adjusting = Adjusting::new(Moving::new(pos, dest, false, None));
+
+        let player = update_adjusting_context(&context, &mut state, adjusting);
+
+        assert!(matches!(player, Player::Falling(_, _, true)));
+        assert!(!state.use_immediate_control_flow);
+        assert!(state.last_movement.is_none());
+    }
+
+    #[test]
+    fn update_adjusting_context_started() {
+        let context = Context::new(None, None);
+        let pos = Point { x: 0, y: 0 };
+        let dest = Point { x: 10, y: 0 };
+        let mut state = PlayerState::default();
+        state.last_known_pos = Some(pos);
+        state.is_stationary = true;
+        let adjusting = Adjusting::new(Moving::new(pos, dest, false, None));
+
+        let player = update_adjusting_context(&context, &mut state, adjusting);
+
+        assert_matches!(player, Player::Adjusting(_));
+        assert_matches!(state.last_movement, Some(LastMovement::Adjusting));
+        assert!(state.use_immediate_control_flow);
+    }
+
+    #[test]
+    fn update_adjusting_context_updated_performs_medium_adjustment_right() {
+        let mut keys = MockKeySender::default();
+        // Expect right to be pressed down and left to be released
+        keys.expect_send_up()
+            .with(eq(KeyKind::Left))
+            .once()
+            .returning(|_| Ok(()));
+        keys.expect_send_down()
+            .with(eq(KeyKind::Right))
+            .once()
+            .returning(|_| Ok(()));
+
+        let context = Context::new(Some(keys), None);
+
+        let pos = Point { x: 0, y: 0 };
+        let dest = Point { x: 5, y: 0 }; // x_distance = 5 (>= medium threshold = 3)
+        let mut state = PlayerState::default();
+        state.last_known_pos = Some(pos);
+
+        let moving = Moving::new(pos, dest, false, None).timeout_started(true);
+        let adjusting = Adjusting::new(moving);
+
+        let player = update_adjusting_context(&context, &mut state, adjusting);
+
+        assert_matches!(player, Player::Adjusting(_));
+        assert_eq!(state.last_known_direction, ActionKeyDirection::Right);
+    }
+
+    #[test]
+    fn update_adjusting_context_updated_performs_medium_adjustment_left() {
+        let mut keys = MockKeySender::default();
+        keys.expect_send_up()
+            .with(eq(KeyKind::Right))
+            .once()
+            .returning(|_| Ok(()));
+        keys.expect_send_down()
+            .with(eq(KeyKind::Left))
+            .once()
+            .returning(|_| Ok(()));
+
+        let context = Context::new(Some(keys), None);
+        let pos = Point { x: 10, y: 0 };
+        let dest = Point { x: 0, y: 0 }; // x_distance = 10
+        let mut state = PlayerState::default();
+        state.last_known_pos = Some(pos);
+
+        let moving = Moving::new(pos, dest, false, None).timeout_started(true);
+        let adjusting = Adjusting::new(moving);
+
+        let player = update_adjusting_context(&context, &mut state, adjusting);
+
+        assert_matches!(player, Player::Adjusting(_));
+        assert_eq!(state.last_known_direction, ActionKeyDirection::Left);
+    }
+
+    #[test]
+    fn update_adjusting_context_updated_completes_when_no_direction_and_no_adjustment() {
+        let mut keys = MockKeySender::default();
+        keys.expect_send_up()
+            .with(eq(KeyKind::Left))
+            .once()
+            .returning(|_| Ok(()));
+        keys.expect_send_up()
+            .with(eq(KeyKind::Right))
+            .once()
+            .returning(|_| Ok(()));
+
+        let context = Context::new(Some(keys), None);
+        let pos = Point { x: 5, y: 0 };
+        let dest = Point { x: 5, y: 0 }; // same position, no direction
+        let mut state = PlayerState::default();
+        state.last_known_pos = Some(pos);
+
+        let moving = Moving::new(pos, dest, false, None).timeout_started(true);
+        let adjusting = Adjusting::new(moving);
+
+        let player = update_adjusting_context(&context, &mut state, adjusting);
+
+        assert_matches!(
+            player,
+            Player::Adjusting(Adjusting {
+                moving: Moving {
+                    completed: true,
+                    ..
+                },
+                ..
+            })
+        );
+    }
+
+    #[test]
+    fn update_adjusting_context_updated_short_adjustment_started() {
+        let mut keys = MockKeySender::default();
+        keys.expect_send_up()
+            .with(eq(KeyKind::Left))
+            .once()
+            .returning(|_| Ok(()));
+        keys.expect_send()
+            .with(eq(KeyKind::Right))
+            .once()
+            .returning(|_| Ok(()));
+
+        let context = Context::new(Some(keys), None);
+        let pos = Point { x: 0, y: 0 };
+        let dest = Point { x: 1, y: 0 }; // exact = true, x_distance = 1
+        let mut state = PlayerState::default();
+        state.last_known_pos = Some(pos);
+
+        let moving = Moving::new(pos, dest, true, None).timeout_started(true);
+        let adjusting = Adjusting::new(moving);
+
+        let player = update_adjusting_context(&context, &mut state, adjusting);
+
+        assert_matches!(
+            player,
+            Player::Adjusting(Adjusting {
+                adjust_timeout: Timeout { started: true, .. },
+                ..
+            })
+        );
+        assert_eq!(state.last_known_direction, ActionKeyDirection::Right);
+    }
+
+    #[test]
+    fn update_adjusting_context_updated_timeout_freezes_when_adjusting_started() {
+        let context = Context::new(None, None);
+        let pos = Point { x: 0, y: 0 };
+        let dest = Point { x: 1, y: 0 };
+        let mut state = PlayerState::default();
+        state.last_known_pos = Some(pos);
+
+        let moving = Moving::new(pos, dest, true, None)
+            .timeout_current(3)
+            .timeout_started(true);
+        let mut adjusting = Adjusting::new(moving);
+        adjusting.adjust_timeout = Timeout {
+            current: 1,
+            started: true,
+            ..Default::default()
+        };
+
+        let player = update_adjusting_context(&context, &mut state, adjusting);
+
+        assert_matches!(
+            player,
+            Player::Adjusting(Adjusting {
+                moving: Moving {
+                    timeout: Timeout { current: 3, .. }, // stay the same
+                    ..
+                },
+                adjust_timeout: Timeout { current: 2, .. }
+            })
+        );
+    }
+
+    #[test]
+    fn update_adjusting_context_updated_complted_exact_not_close_enough_keeps_adjusting() {
+        let context = Context::new(None, None);
+        let pos = Point { x: 0, y: 0 };
+        let dest = Point { x: 1, y: 0 };
+        let mut state = PlayerState::default();
+        state.last_known_pos = Some(pos);
+        let moving = Moving::new(pos, dest, true, None)
+            .completed(true)
+            .timeout_current(4)
+            .timeout_started(true);
+        let adjusting = Adjusting::new(moving);
+
+        let player = update_adjusting_context(&context, &mut state, adjusting);
+
+        assert_matches!(
+            player,
+            Player::Adjusting(Adjusting {
+                moving: Moving {
+                    completed: false,
+                    timeout: Timeout {
+                        current: 0,
+                        started: true,
+                        ..
+                    },
+                    ..
+                },
+                ..
+            })
+        );
+    }
+
+    // TODO: add tests for on_action
 }

@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{fs::File, io::BufReader, time::Duration};
 
 use backend::{
     Action, ActionKey, ActionMove, Minimap as MinimapData, Position, RotationMode, create_minimap,
@@ -7,6 +7,7 @@ use backend::{
 };
 use dioxus::{document::EvalError, prelude::*};
 use futures_util::StreamExt;
+use rand::distr::{Alphanumeric, SampleString};
 use serde::Serialize;
 use tokio::time::sleep;
 
@@ -208,6 +209,7 @@ struct MinimapState {
 enum MinimapUpdate {
     Set,
     Create(String),
+    Import(MinimapData),
     Delete,
 }
 
@@ -255,6 +257,10 @@ pub fn Minimap() -> Element {
                     minimaps.restart();
                     update_minimap(None, minimap()).await;
                 }
+                MinimapUpdate::Import(minimap) => {
+                    upsert_minimap(minimap).await;
+                    minimaps.restart();
+                }
                 MinimapUpdate::Delete => {
                     if let Some(minimap) = minimap.take() {
                         delete_minimap(minimap).await;
@@ -301,30 +307,33 @@ pub fn Minimap() -> Element {
             Buttons { state, minimap }
             Info { state, minimap }
             div { class: "flex-grow flex items-end px-2",
-                div { class: "h-10 w-full flex items-center",
-                    TextSelect {
-                        class: "w-full",
-                        options: minimap_names(),
-                        disabled: false,
-                        placeholder: "Create a map...",
-                        on_create: move |name| {
-                            coroutine.send(MinimapUpdate::Create(name));
-                        },
-                        on_delete: move |_| {
-                            coroutine.send(MinimapUpdate::Delete);
-                        },
-                        on_select: move |(index, _)| {
-                            let selected = minimaps
-                                .peek()
-                                .as_ref()
-                                .expect("should already loaded")
-                                .get(index)
-                                .cloned()
-                                .unwrap();
-                            minimap.set(Some(selected));
-                            coroutine.send(MinimapUpdate::Set);
-                        },
-                        selected: minimap_index(),
+                div { class: "flex flex-col items-end w-full",
+                    ImportExport { minimap }
+                    div { class: "h-10 w-full flex items-center",
+                        TextSelect {
+                            class: "w-full",
+                            options: minimap_names(),
+                            disabled: false,
+                            placeholder: "Create a map...",
+                            on_create: move |name| {
+                                coroutine.send(MinimapUpdate::Create(name));
+                            },
+                            on_delete: move |_| {
+                                coroutine.send(MinimapUpdate::Delete);
+                            },
+                            on_select: move |(index, _)| {
+                                let selected = minimaps
+                                    .peek()
+                                    .as_ref()
+                                    .expect("should already loaded")
+                                    .get(index)
+                                    .cloned()
+                                    .unwrap();
+                                minimap.set(Some(selected));
+                                coroutine.send(MinimapUpdate::Set);
+                            },
+                            selected: minimap_index(),
+                        }
                     }
                 }
             }
@@ -504,7 +513,7 @@ fn Info(
     });
 
     rsx! {
-        div { class: "grid grid-cols-2 items-center justify-center px-4 py-3 gap-3",
+        div { class: "grid grid-cols-2 items-center justify-center px-4 py-3 gap-2",
             InfoItem { name: "State", value: info().state }
             InfoItem { name: "Position", value: info().position }
             InfoItem { name: "Health", value: info().health }
@@ -551,6 +560,102 @@ fn Buttons(
                 on_click: move |_| async move {
                     redetect_minimap().await;
                 },
+            }
+        }
+    }
+}
+
+#[component]
+fn ImportExport(minimap: ReadOnlySignal<Option<MinimapData>>) -> Element {
+    let coroutine = use_coroutine_handle::<MinimapUpdate>();
+    let export_element_id = use_memo(|| Alphanumeric.sample_string(&mut rand::rng(), 8));
+    let export = use_callback(move |_| {
+        let js = format!(
+            r#"
+            const element = document.getElementById("{}");
+            if (element === null) {{
+                return;
+            }}
+            const json = await dioxus.recv();
+
+            element.setAttribute("href", "data:application/json;charset=utf-8," + encodeURIComponent(json));
+            element.setAttribute("download", "character.json");
+            element.click();
+            "#,
+            export_element_id(),
+        );
+        let eval = document::eval(js.as_str());
+        let Some(minimap) = &*minimap.peek() else {
+            return;
+        };
+        let Ok(json) = serde_json::to_string_pretty(&minimap) else {
+            return;
+        };
+        let _ = eval.send(json);
+    });
+
+    let import_element_id = use_memo(|| Alphanumeric.sample_string(&mut rand::rng(), 8));
+    let import = use_callback(move |_| {
+        let js = format!(
+            r#"
+            const element = document.getElementById("{}");
+            if (element === null) {{
+                return;
+            }}
+            element.click();
+            "#,
+            import_element_id()
+        );
+        document::eval(js.as_str());
+    });
+    let import_minimaps = use_callback(move |files| {
+        for file in files {
+            let Ok(file) = File::open(file) else {
+                continue;
+            };
+            let reader = BufReader::new(file);
+            let Ok(minimap) = serde_json::from_reader::<_, MinimapData>(reader) else {
+                continue;
+            };
+            coroutine.send(MinimapUpdate::Import(minimap));
+        }
+    });
+
+    rsx! {
+        div { class: "flex gap-3",
+            div {
+                input {
+                    id: import_element_id(),
+                    class: "w-0 h-0 invisible",
+                    r#type: "file",
+                    accept: ".json",
+                    name: "Minimap JSON",
+                    onchange: move |e| {
+                        if let Some(files) = e.data.files().map(|engine| engine.files()) {
+                            import_minimaps(files);
+                        }
+                    },
+                }
+                Button {
+                    class: "w-20",
+                    text: "Import",
+                    kind: ButtonKind::Primary,
+                    on_click: move |_| {
+                        import(());
+                    },
+                }
+            }
+            div {
+                a { id: export_element_id(), class: "w-0 h-0 invisible" }
+                Button {
+                    class: "w-20",
+                    text: "Export",
+                    kind: ButtonKind::Primary,
+                    disabled: minimap().is_none(),
+                    on_click: move |_| {
+                        export(());
+                    },
+                }
             }
         }
     }

@@ -167,6 +167,14 @@ pub fn Actions() -> Element {
         *action = new_action;
         coroutine.send(ActionUpdate::Update(actions));
     });
+    let copy_action = use_callback(move |kind| match kind {
+        ActionInputKind::Edit(action, _) => {
+            popup_input_kind.set(Some(PopupInputKind::Action(ActionInputKind::Add(action))));
+        }
+        ActionInputKind::Add(_) | ActionInputKind::PingPongOrAutoMobbing(_) => {
+            unreachable!()
+        }
+    });
 
     // Edit mobbing key/bound callbacks
     let edit_mobbing_key = use_callback(move |key| {
@@ -244,6 +252,9 @@ pub fn Actions() -> Element {
                 PopupInputKind::Action(kind) => rsx! {
                     PopupActionInput {
                         actions: minimap_preset_actions,
+                        on_copy: move |_| {
+                            copy_action(kind);
+                        },
                         on_cancel: move |_| {
                             popup_input_kind.take();
                         },
@@ -285,11 +296,7 @@ pub fn Actions() -> Element {
                             },
                             on_value: move |(mut platform, index): (Platform, Option<usize>)| {
                                 popup_input_kind.take();
-                                platform.x_end = if platform.x_end <= platform.x_start {
-                                    platform.x_start + 1
-                                } else {
-                                    platform.x_end
-                                };
+                                update_valid_platform_end(&mut platform);
                                 if let Some(index) = index {
                                     edit_platform((platform, index));
                                 } else {
@@ -498,22 +505,20 @@ fn SectionPlatforms(
 
             if settings.platform_start_key.enabled && settings.platform_start_key.key == key {
                 platform.x_start = position.peek().0;
+                update_valid_platform_end(&mut platform);
                 platform.y = position.peek().1;
                 continue;
             }
 
             if settings.platform_end_key.enabled && settings.platform_end_key.key == key {
                 platform.x_end = position.peek().0;
-                platform.x_end = if platform.x_end <= platform.x_start {
-                    platform.x_start + 1
-                } else {
-                    platform.x_end
-                };
+                update_valid_platform_end(&mut platform);
                 platform.y = position.peek().1;
                 continue;
             }
 
             if settings.platform_add_key.enabled && settings.platform_add_key.key == key {
+                update_valid_platform_end(&mut platform);
                 add_platform(platform);
                 continue;
             }
@@ -1103,6 +1108,7 @@ fn PopupBoundInput(
 #[component]
 fn PopupActionInput(
     actions: ReadOnlySignal<Vec<Action>>,
+    on_copy: EventHandler<()>,
     on_cancel: EventHandler,
     on_value: EventHandler<ActionInputValueKind>,
     kind: ActionInputKind,
@@ -1132,6 +1138,7 @@ fn PopupActionInput(
         kind,
         ActionInputKind::Edit(_, _) | ActionInputKind::PingPongOrAutoMobbing(_)
     );
+    let copyable = matches!(kind, ActionInputKind::Edit(_, _));
     let can_create_linked_action = match kind {
         ActionInputKind::Add(_) | ActionInputKind::Edit(_, _) => match action.condition() {
             ActionCondition::EveryMillis(_)
@@ -1171,12 +1178,12 @@ fn PopupActionInput(
                 section_text,
                 switchable,
                 modifying,
+                copyable,
                 can_create_linked_action,
                 can_have_position: switchable,
                 can_have_direction: switchable,
-                on_cancel: move |_| {
-                    on_cancel(());
-                },
+                on_copy,
+                on_cancel,
                 on_value: move |(action, condition)| {
                     match kind {
                         ActionInputKind::Add(_) => {
@@ -1217,9 +1224,11 @@ fn ActionInput(
     section_text: String,
     switchable: bool,
     modifying: bool,
+    copyable: bool,
     can_create_linked_action: bool,
     can_have_position: bool,
     can_have_direction: bool,
+    on_copy: EventHandler<()>,
     on_cancel: EventHandler,
     on_value: EventHandler<(Action, ActionCondition)>,
     value: Action,
@@ -1238,32 +1247,42 @@ fn ActionInput(
     rsx! {
         div { class: "bg-gray-900 max-w-xl w-full h-full max-h-120 px-2 m-auto",
             Section { name: section_text, class: "relative h-full",
-                if switchable {
-                    Button {
-                        text: button_text(),
-                        kind: ButtonKind::Primary,
-                        on_click: move |_| {
-                            if discriminant(&value) != discriminant(&*action.peek()) {
-                                action.set(value);
-                            } else if matches!(value, Action::Move(_)) {
-                                action
-                                    .set(
-                                        Action::Key(ActionKey {
-                                            condition: value.condition(),
-                                            ..ActionKey::default()
-                                        }),
-                                    );
-                            } else {
-                                action
-                                    .set(
-                                        Action::Move(ActionMove {
-                                            condition: value.condition(),
-                                            ..ActionMove::default()
-                                        }),
-                                    );
-                            }
-                        },
-                        class: "flex-none label border-b border-gray-600",
+                div { class: "flex-none grid auto-cols-auto grid-flow-col",
+                    if switchable {
+                        Button {
+                            text: button_text(),
+                            kind: ButtonKind::Primary,
+                            on_click: move |_| {
+                                if discriminant(&value) != discriminant(&*action.peek()) {
+                                    action.set(value);
+                                } else if matches!(value, Action::Move(_)) {
+                                    action
+                                        .set(
+                                            Action::Key(ActionKey {
+                                                condition: value.condition(),
+                                                ..ActionKey::default()
+                                            }),
+                                        );
+                                } else {
+                                    action
+                                        .set(
+                                            Action::Move(ActionMove {
+                                                condition: value.condition(),
+                                                ..ActionMove::default()
+                                            }),
+                                        );
+                                }
+                            },
+                            class: "label border-b border-gray-600",
+                        }
+                    }
+                    if copyable {
+                        Button {
+                            text: "Copy",
+                            kind: ButtonKind::Primary,
+                            on_click: on_copy,
+                            class: "label border-b border-gray-600",
+                        }
                     }
                 }
                 match action() {
@@ -2081,4 +2100,13 @@ fn filter_actions(actions: Vec<Action>, condition_filter: ActionCondition) -> Ve
     }
 
     filtered
+}
+
+#[inline]
+fn update_valid_platform_end(platform: &mut Platform) {
+    platform.x_end = if platform.x_end <= platform.x_start {
+        platform.x_start + 1
+    } else {
+        platform.x_end
+    };
 }

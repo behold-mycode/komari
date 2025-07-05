@@ -439,12 +439,46 @@ mod tests {
         context::Context,
         player::{
             PingPongDirection, Player, PlayerAction, PlayerActionPingPong,
-            double_jump::DoubleJumping, moving::Moving, state::PlayerState, timeout::Timeout,
+            double_jump::DoubleJumping,
+            moving::Moving,
+            state::{LastMovement, PlayerState},
+            timeout::Timeout,
         },
     };
 
     #[test]
-    fn double_jumping_update_correct_direction() {
+    fn update_double_jumping_context_started() {
+        let pos = Point::new(0, 0);
+        let dest = Point::new(30, 0);
+        let context = Context::new(None, None);
+        let mut state = PlayerState::default();
+        state.last_known_pos = Some(pos);
+        let moving = Moving::new(pos, dest, false, None);
+        let double_jump = DoubleJumping::new(moving, false, false);
+
+        let player = update_double_jumping_context(&context, &mut state, double_jump);
+        assert_matches!(player, Player::DoubleJumping(_));
+        assert!(state.use_immediate_control_flow);
+        assert_eq!(state.last_movement, Some(LastMovement::DoubleJumping));
+    }
+
+    #[test]
+    fn update_double_jumping_context_started_falls_if_dest_above_and_close() {
+        let pos = Point::new(0, 10);
+        let dest = Point::new(0, 0);
+        let context = Context::new(None, None);
+        let mut state = PlayerState::default();
+        state.is_stationary = true;
+        state.last_known_pos = Some(pos);
+        let moving = Moving::new(pos, dest, false, None);
+        let double_jump = DoubleJumping::new(moving, false, false);
+
+        let player = update_double_jumping_context(&context, &mut state, double_jump);
+        assert_matches!(player, Player::Falling(_, _, true));
+    }
+
+    #[test]
+    fn update_double_jumping_context_updated_correct_direction() {
         let pos = Point::new(100, 50);
         let dest = Point::new(50, 50); // Move to the left
         let moving = Moving {
@@ -481,7 +515,60 @@ mod tests {
     }
 
     #[test]
-    fn double_jumping_mage_requires_direction_even_when_x_direction_zero() {
+    fn update_double_jumping_context_updated_forced_presses_only_jump_key() {
+        let mut keys = MockKeySender::new();
+        keys.expect_send()
+            .withf(|&key| key == KeyKind::Space) // or use jump_key if needed
+            .once()
+            .returning(|_| Ok(()));
+        keys.expect_send_down().never();
+        keys.expect_send_up().never();
+        let context = Context::new(Some(keys), None);
+
+        let mut state = PlayerState::default();
+        state.last_known_pos = Some(Point::new(0, 0));
+        state.velocity = (0.5, 0.0); // Low enough for X_VELOCITY_THRESHOLD
+        state.config.jump_key = KeyKind::Space;
+
+        let moving =
+            Moving::new(Point::new(0, 0), Point::new(0, 0), true, None).timeout_started(true);
+        let double_jump = DoubleJumping::new(moving, true, false); // forced=true
+
+        let player = update_double_jumping_context(&context, &mut state, double_jump);
+
+        assert_matches!(player, Player::DoubleJumping(_));
+    }
+
+    #[test]
+    fn update_double_jumping_context_started_requires_stationary_and_stalls_if_velocity_high() {
+        let context = Context::new(None, None);
+        let mut state = PlayerState::default();
+        state.last_known_pos = Some(Point::new(0, 0));
+        state.velocity = (1.5, 0.5); // Too fast
+
+        let moving = Moving::new(Point::new(0, 0), Point::new(50, 0), false, None);
+        let double_jump = DoubleJumping::new(moving, false, true); // require_near_stationary = true
+
+        let player = update_double_jumping_context(&context, &mut state, double_jump);
+
+        assert_matches!(
+            player,
+            Player::DoubleJumping(DoubleJumping {
+                moving: Moving {
+                    timeout: Timeout { started: false, .. }, // stalls
+                    ..
+                },
+                ..
+            })
+        );
+        assert!(
+            !state.use_immediate_control_flow,
+            "Should not trigger flow until stationary"
+        );
+    }
+
+    #[test]
+    fn update_double_jumping_context_updated_mage_requires_direction_even_when_x_direction_zero() {
         let pos = Point::new(100, 50);
         let dest = pos; // Same x => x_direction == 0
         let moving = Moving {
