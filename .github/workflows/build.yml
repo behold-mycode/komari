@@ -10,16 +10,16 @@ on:
       - "v*.*.*"
     paths-ignore:
       - "**/*.md"
-      - "examples/"
-      - "docs/"
+      - "examples/**"
+      - "docs/**"
   pull_request:
     branches:
       - "master"
       - "v*.*.*"
     paths-ignore:
       - "**/*.md"
-      - "examples/"
-      - "docs/"
+      - "examples/**"
+      - "docs/**"
 
 
 env:
