@@ -10,11 +10,11 @@ from concurrent import futures
 from input_pb2 import Key, KeyRequest, KeyResponse, KeyDownRequest, KeyDownResponse, KeyUpRequest, KeyUpResponse, KeyInitRequest, KeyInitResponse, MouseRequest, MouseResponse, MouseAction, Coordinate
 from input_pb2_grpc import KeyInputServicer, add_KeyInputServicer_to_server
 
-KEY_DOWN = 0x02
-KEY_UP = 0x03
-MOUSE_MOVE = 0x04
-MOUSE_CLICK = 0x05
-MOUSE_SCROLL = 0x06
+KEY_DOWN = 1
+KEY_UP = 2
+MOUSE_MOVE = 3
+MOUSE_CLICK = 4
+MOUSE_SCROLL = 5
 
 
 class KeyInput(KeyInputServicer):
@@ -47,9 +47,11 @@ class KeyInput(KeyInputServicer):
             time.sleep(0.08)
             self.serial.write(bytes([MOUSE_CLICK]))
         elif action == MouseAction.ScrollDown:
+            scroll_bytes = int(1000).to_bytes(
+                2, byteorder='little', signed=True)
             self.serial.write(bytes([MOUSE_MOVE]) + dx_bytes + dy_bytes)
             time.sleep(0.08)
-            self.serial.write(bytes([MOUSE_SCROLL, 0xFF]))
+            self.serial.write(bytes([MOUSE_SCROLL]) + scroll_bytes)
 
         return MouseResponse()
 
