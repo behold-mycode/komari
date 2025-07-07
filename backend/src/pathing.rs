@@ -53,7 +53,7 @@ impl PlatformWithNeighbors {
 }
 
 /// The platform being visited during path finding.
-#[derive(PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 struct VisitingPlatform {
     score: u32,
     platform: Platform,
@@ -117,14 +117,19 @@ pub fn find_neighbors(
 
         let mut neighbors = Array::new();
         for j in (0..i).chain(i + 1..platforms.len()) {
+            let neighbor = platforms[j];
+            if neighbor.xs.is_empty() {
+                continue;
+            }
+
             if platforms_reachable(
                 current,
-                platforms[j],
+                neighbor,
                 double_jump_threshold,
                 jump_threshold,
                 grappling_threshold,
             ) {
-                neighbors.push(platforms[j]);
+                neighbors.push(neighbor);
             }
         }
         vec.push(PlatformWithNeighbors {
