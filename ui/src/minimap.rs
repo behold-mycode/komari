@@ -216,7 +216,7 @@ enum MinimapUpdate {
 #[component]
 pub fn Minimap() -> Element {
     let mut minimap = use_context::<AppState>().minimap;
-    let minimap_preset = use_context::<AppState>().minimap_preset;
+    let mut minimap_preset = use_context::<AppState>().minimap_preset;
     let position = use_context::<AppState>().position;
     let mut minimaps = use_resource(async || query_minimaps().await.unwrap_or_default());
     // Maps queried `minimaps` to names
@@ -245,7 +245,7 @@ pub fn Minimap() -> Element {
         while let Some(message) = rx.next().await {
             match message {
                 MinimapUpdate::Set => {
-                    update_minimap(None, minimap()).await;
+                    update_minimap(minimap_preset(), minimap()).await;
                 }
                 MinimapUpdate::Create(name) => {
                     let Some(new_minimap) = create_minimap(name).await else {
@@ -254,6 +254,7 @@ pub fn Minimap() -> Element {
                     let new_minimap = upsert_minimap(new_minimap).await;
 
                     minimap.set(Some(new_minimap));
+                    minimap_preset.set(None);
                     minimaps.restart();
                     update_minimap(None, minimap()).await;
                 }
@@ -263,6 +264,7 @@ pub fn Minimap() -> Element {
                 }
                 MinimapUpdate::Delete => {
                     if let Some(minimap) = minimap.take() {
+                        minimap_preset.set(None);
                         delete_minimap(minimap).await;
                         update_minimap(None, None).await;
                         minimaps.restart();
@@ -272,13 +274,23 @@ pub fn Minimap() -> Element {
         }
     });
 
-    // Sets a minimap if there is not one
+    // Sets a minimap and preset if there is not one
     use_effect(move || {
         if let Some(minimaps) = minimaps()
             && !minimaps.is_empty()
             && minimap.peek().is_none()
         {
             minimap.set(minimaps.into_iter().next());
+            minimap_preset.set(
+                minimap
+                    .peek()
+                    .as_ref()
+                    .expect("has value")
+                    .actions
+                    .keys()
+                    .next()
+                    .cloned(),
+            );
             coroutine.send(MinimapUpdate::Set);
         }
     });
@@ -322,13 +334,14 @@ pub fn Minimap() -> Element {
                                 coroutine.send(MinimapUpdate::Delete);
                             },
                             on_select: move |(index, _)| {
-                                let selected = minimaps
+                                let selected: MinimapData = minimaps
                                     .peek()
                                     .as_ref()
                                     .expect("should already loaded")
                                     .get(index)
                                     .cloned()
                                     .unwrap();
+                                minimap_preset.set(selected.actions.keys().next().cloned());
                                 minimap.set(Some(selected));
                                 coroutine.send(MinimapUpdate::Set);
                             },

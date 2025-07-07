@@ -20,7 +20,7 @@ pub enum RuneStage {
     #[default]
     Precondition,
     // Finds the region containing the four arrows.
-    FindRegion(ArrowsCalibrating, Timeout, u32),
+    FindRegion(ArrowsCalibrating, Timeout, Option<Timeout>, u32),
     // Solves for the rune arrows that possibly include spinning arrows.
     Solving(ArrowsCalibrating, Timeout),
     // Presses the keys.
@@ -47,10 +47,11 @@ impl SolvingRune {
         self,
         calibrating: ArrowsCalibrating,
         timeout: Timeout,
+        cooldown_timeout: Option<Timeout>,
         retry_count: u32,
     ) -> SolvingRune {
         SolvingRune {
-            stage: RuneStage::FindRegion(calibrating, timeout, retry_count),
+            stage: RuneStage::FindRegion(calibrating, timeout, cooldown_timeout, retry_count),
         }
     }
 
@@ -95,17 +96,25 @@ pub fn update_solving_rune_context(
             if !state.is_stationary || !context.keys.all_keys_cleared() {
                 solving_rune.stage_precondition()
             } else {
-                solving_rune.stage_find_region(ArrowsCalibrating::default(), Timeout::default(), 0)
+                solving_rune.stage_find_region(
+                    ArrowsCalibrating::default(),
+                    Timeout::default(),
+                    None,
+                    0,
+                )
             }
         }
-        RuneStage::FindRegion(calibrating, timeout, retry_count) => update_find_region(
-            context,
-            solving_rune,
-            state.config.interact_key,
-            calibrating,
-            timeout,
-            retry_count,
-        ),
+        RuneStage::FindRegion(calibrating, timeout, cooldown_timeout, retry_count) => {
+            update_find_region(
+                context,
+                solving_rune,
+                state.config.interact_key,
+                calibrating,
+                timeout,
+                cooldown_timeout,
+                retry_count,
+            )
+        }
         RuneStage::Solving(calibrating, timeout) => {
             update_solving(context, solving_rune, calibrating, timeout)
         }
@@ -149,12 +158,32 @@ fn update_find_region(
     interact_key: KeyKind,
     calibrating: ArrowsCalibrating,
     timeout: Timeout,
+    cooldown_timeout: Option<Timeout>,
     retry_count: u32,
 ) -> SolvingRune {
+    // cooldown_timeout is used to wait for rune cooldown around ~4 secs before hitting interact
+    // key again.
+    if let Some(cooldown_timeout) = cooldown_timeout {
+        return match next_timeout_lifecycle(cooldown_timeout, 125) {
+            Lifecycle::Updated(cooldown_timeout) | Lifecycle::Started(cooldown_timeout) => {
+                solving_rune.stage_find_region(
+                    calibrating,
+                    timeout,
+                    Some(cooldown_timeout),
+                    retry_count,
+                )
+            }
+            Lifecycle::Ended => {
+                solving_rune.stage_find_region(calibrating, timeout, None, retry_count)
+            }
+        };
+    }
+
+    debug_assert!(cooldown_timeout.is_none());
     match next_timeout_lifecycle(timeout, 35) {
         Lifecycle::Started(timeout) => {
             let _ = context.keys.send(interact_key);
-            solving_rune.stage_find_region(calibrating, timeout, retry_count)
+            solving_rune.stage_find_region(calibrating, timeout, cooldown_timeout, retry_count)
         }
         Lifecycle::Ended => match context.detector_unwrap().detect_rune_arrows(calibrating) {
             Ok(ArrowsState::Calibrating(calibrating)) => {
@@ -167,6 +196,7 @@ fn update_find_region(
                     solving_rune.stage_find_region(
                         ArrowsCalibrating::default(),
                         Timeout::default(),
+                        Some(Timeout::default()),
                         retry_count + 1,
                     )
                 } else {
@@ -175,7 +205,7 @@ fn update_find_region(
             }
         },
         Lifecycle::Updated(timeout) => {
-            solving_rune.stage_find_region(calibrating, timeout, retry_count)
+            solving_rune.stage_find_region(calibrating, timeout, cooldown_timeout, retry_count)
         }
     }
 }
@@ -257,7 +287,7 @@ mod tests {
         assert_matches!(
             result,
             Player::SolvingRune(SolvingRune {
-                stage: RuneStage::FindRegion(_, _, 0)
+                stage: RuneStage::FindRegion(_, _, None, 0)
             })
         );
     }
@@ -272,6 +302,7 @@ mod tests {
         let solving_rune = SolvingRune::default().stage_find_region(
             ArrowsCalibrating::default(),
             Timeout::default(),
+            None,
             0,
         );
 
@@ -285,6 +316,7 @@ mod tests {
                 current: 35,
                 ..Default::default()
             },
+            None,
             0,
         );
 
@@ -313,6 +345,7 @@ mod tests {
         let solving_rune = SolvingRune::default().stage_find_region(
             ArrowsCalibrating::default(),
             Timeout::default(),
+            None,
             0,
         );
 
@@ -326,13 +359,51 @@ mod tests {
                 current: 35,
                 ..Default::default()
             },
+            None,
             0,
         );
 
         assert_matches!(
             result,
             SolvingRune {
-                stage: RuneStage::FindRegion(_, Timeout { started: false, .. }, 1)
+                stage: RuneStage::FindRegion(
+                    _,
+                    Timeout { started: false, .. },
+                    Some(Timeout { started: false, .. }),
+                    1
+                )
+            }
+        );
+    }
+
+    #[test]
+    fn update_find_region_retry_cooldown_timeout_to_none() {
+        let context = Context::new(None, None);
+        let solving_rune = SolvingRune::default().stage_find_region(
+            ArrowsCalibrating::default(),
+            Timeout::default(),
+            None,
+            0,
+        );
+
+        let result = update_find_region(
+            &context,
+            solving_rune,
+            KeyKind::default(),
+            ArrowsCalibrating::default(),
+            Timeout::default(),
+            Some(Timeout {
+                started: true,
+                current: 125,
+                ..Default::default()
+            }),
+            1,
+        );
+
+        assert_matches!(
+            result,
+            SolvingRune {
+                stage: RuneStage::FindRegion(_, _, None, 1)
             }
         );
     }
@@ -366,7 +437,7 @@ mod tests {
     }
 
     #[test]
-    fn update_solving_to_solving_on_imcomplete() {
+    fn update_solving_to_solving_on_incomplete() {
         let mut detector = MockDetector::default();
         detector
             .expect_detect_rune_arrows()
