@@ -20,9 +20,6 @@ pub enum RuneStage {
     #[default]
     Precondition,
     // Finds the region containing the four arrows.
-    //
-    // If the rune is a normal rune with no spinning arrows, this might complete the first time
-    // it calibrates and moves to [`Self::PressKeys`].
     FindRegion(ArrowsCalibrating, Timeout, u32),
     // Solves for the rune arrows that possibly include spinning arrows.
     Solving(ArrowsCalibrating, Timeout),
