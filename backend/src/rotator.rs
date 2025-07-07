@@ -17,7 +17,7 @@ use crate::{
     array::Array,
     buff::{Buff, BuffKind},
     context::{Context, MS_PER_TICK},
-    database::{Action, ActionCondition, ActionKey, ActionMove},
+    database::{Action, ActionCondition, ActionKey, ActionMove, EliteBossBehavior},
     minimap::Minimap,
     player::{
         GRAPPLING_THRESHOLD, PanicTo, PingPongDirection, Player, PlayerAction, PlayerActionAutoMob,
@@ -144,11 +144,11 @@ pub struct RotatorBuildArgs<'a> {
     pub familiar_swappable_slots: SwappableFamiliars,
     pub familiar_swappable_rarities: &'a HashSet<FamiliarRarity>,
     pub familiar_swap_check_millis: u64,
-    pub elite_boss_key: Option<KeyBinding>,
+    pub elite_boss_behavior: Option<EliteBossBehavior>,
+    pub elite_boss_behavior_key: KeyBinding,
     pub panic_mode: PanicMode,
     pub enable_panic_mode: bool,
     pub enable_rune_solving: bool,
-    pub enable_change_channel_on_elite_boss_appear: bool,
     pub enable_familiars_swapping: bool,
     pub enable_reset_normal_actions_on_erda: bool,
 }
@@ -164,11 +164,11 @@ impl Rotator {
             familiar_swappable_slots,
             familiar_swappable_rarities,
             familiar_swap_check_millis,
-            elite_boss_key,
+            elite_boss_behavior,
+            elite_boss_behavior_key,
             panic_mode,
             enable_panic_mode,
             enable_rune_solving,
-            enable_change_channel_on_elite_boss_appear,
             enable_familiars_swapping,
             enable_reset_normal_actions_on_erda,
         } = args;
@@ -224,17 +224,21 @@ impl Rotator {
                 solve_rune_priority_action(),
             );
         }
-        if enable_change_channel_on_elite_boss_appear {
-            self.priority_actions.insert(
-                self.id_counter.fetch_add(1, Ordering::Relaxed),
-                elite_boss_change_channel_priority_action(),
-            );
-        }
-        if let Some(key) = elite_boss_key {
-            self.priority_actions.insert(
-                self.id_counter.fetch_add(1, Ordering::Relaxed),
-                elite_boss_use_key_priority_action(key),
-            );
+        if let Some(behavior) = elite_boss_behavior {
+            match behavior {
+                EliteBossBehavior::CycleChannel => {
+                    self.priority_actions.insert(
+                        self.id_counter.fetch_add(1, Ordering::Relaxed),
+                        elite_boss_change_channel_priority_action(),
+                    );
+                }
+                EliteBossBehavior::UseKey => {
+                    self.priority_actions.insert(
+                        self.id_counter.fetch_add(1, Ordering::Relaxed),
+                        elite_boss_use_key_priority_action(elite_boss_behavior_key),
+                    );
+                }
+            }
         }
         if enable_familiars_swapping {
             self.priority_actions.insert(
@@ -1142,10 +1146,10 @@ mod tests {
             familiar_swappable_rarities: &HashSet::default(),
             familiar_swap_check_millis: 0,
             panic_mode: PanicMode::default(),
-            elite_boss_key: Some(KeyBinding::default()),
+            elite_boss_behavior: Some(EliteBossBehavior::CycleChannel),
+            elite_boss_behavior_key: KeyBinding::default(),
             enable_panic_mode: false,
             enable_rune_solving: true,
-            enable_change_channel_on_elite_boss_appear: false,
             enable_familiars_swapping: false,
             enable_reset_normal_actions_on_erda: false,
         };

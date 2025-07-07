@@ -569,16 +569,7 @@ fn SectionOthers(
                     },
                     value: settings_view().stop_on_fail_or_change_map,
                 }
-                SettingsCheckbox {
-                    label: "Change channel on elite boss spawns",
-                    on_value: move |enable_change_channel_on_elite_boss_appear| {
-                        save_settings(SettingsData {
-                            enable_change_channel_on_elite_boss_appear,
-                            ..settings_view.peek().clone()
-                        });
-                    },
-                    value: settings_view().enable_change_channel_on_elite_boss_appear,
-                }
+                div {}
                 SettingsCheckbox {
                     label: "Enable panic mode",
                     on_value: move |enable_panic_mode| {
