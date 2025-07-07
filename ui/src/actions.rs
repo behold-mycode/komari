@@ -108,7 +108,12 @@ pub fn Actions() -> Element {
                         continue;
                     };
 
-                    if current_minimap.actions.try_insert(preset, vec![]).is_ok() {
+                    if current_minimap
+                        .actions
+                        .try_insert(preset.clone(), vec![])
+                        .is_ok()
+                    {
+                        minimap_preset.set(Some(preset));
                         save_minimap(current_minimap).await;
                     }
                 }
@@ -121,7 +126,7 @@ pub fn Actions() -> Element {
                     };
 
                     if current_minimap.actions.remove(&preset).is_some() {
-                        minimap_preset.set(None);
+                        minimap_preset.set(current_minimap.actions.keys().next().cloned());
                         save_minimap(current_minimap).await;
                     }
                 }
@@ -213,19 +218,6 @@ pub fn Actions() -> Element {
 
         *platform = new_platform;
         coroutine.send(ActionUpdate::UpdateMinimap(minimap));
-    });
-
-    // Sets a preset if there is not one
-    use_effect(move || {
-        if let Some(minimap) = minimap() {
-            if !minimap.actions.is_empty() && minimap_preset.peek().is_none() {
-                minimap_preset.set(minimap.actions.into_keys().next());
-                coroutine.send(ActionUpdate::Set);
-            }
-        } else {
-            minimap_preset.set(None);
-            coroutine.send(ActionUpdate::Set);
-        }
     });
 
     rsx! {

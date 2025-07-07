@@ -22,7 +22,6 @@ use crate::{
 
 const SPAM_DELAY: u32 = 7;
 const SOFT_SPAM_DELAY: u32 = 12;
-const STOP_UP_KEY_TICK: u32 = 3;
 const TIMEOUT: u32 = MOVE_TIMEOUT + 3;
 const UP_JUMPED_Y_VELOCITY_THRESHOLD: f32 = 1.3;
 const X_NEAR_STATIONARY_THRESHOLD: f32 = 0.28;
@@ -152,11 +151,7 @@ pub fn update_up_jumping_context(
                     }
                 }
                 (true, _, _) => {
-                    // This is when up jump like Blaster or mage still requires up key
-                    // cancel early to avoid stucking to a rope
-                    if up_jump_key.is_some() && moving.timeout.total == STOP_UP_KEY_TICK {
-                        let _ = context.keys.send_up(KeyKind::Up);
-                    }
+                    let _ = context.keys.send_up(KeyKind::Up);
                 }
             }
 
