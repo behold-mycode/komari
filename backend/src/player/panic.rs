@@ -111,11 +111,20 @@ fn update_changing_channel(
     timeout: Timeout,
     retry_count: u32,
 ) -> Panicking {
-    const TIMEOUT: u32 = 220;
-    const PRESS_RIGHT_AT: u32 = 170;
-    const PRESS_ENTER_AT: u32 = 200;
+    const PRESS_RIGHT_AT_AFTER: u32 = 15;
+    const PRESS_ENTER_AT_AFTER: u32 = 30;
+    const TIMEOUT_AFTER: u32 = 50;
 
-    match next_timeout_lifecycle(timeout, TIMEOUT) {
+    const TIMEOUT_INITIAL: u32 = 220;
+    const PRESS_RIGHT_AT_INITIAL: u32 = 170;
+    const PRESS_ENTER_AT_INITIAL: u32 = 200;
+
+    let max_timeout = if retry_count == 0 {
+        TIMEOUT_INITIAL
+    } else {
+        TIMEOUT_AFTER
+    };
+    match next_timeout_lifecycle(timeout, max_timeout) {
         Lifecycle::Started(timeout) => {
             if !context
                 .detector_unwrap()
@@ -138,8 +147,13 @@ fn update_changing_channel(
             }
         }
         Lifecycle::Updated(timeout) => {
+            let (press_right_at, press_enter_at) = if retry_count == 0 {
+                (PRESS_RIGHT_AT_INITIAL, PRESS_ENTER_AT_INITIAL)
+            } else {
+                (PRESS_RIGHT_AT_AFTER, PRESS_ENTER_AT_AFTER)
+            };
             match timeout.current {
-                PRESS_RIGHT_AT => {
+                tick if tick == press_right_at => {
                     if context
                         .detector_unwrap()
                         .detect_change_channel_menu_opened()
@@ -147,7 +161,7 @@ fn update_changing_channel(
                         let _ = context.keys.send(KeyKind::Right);
                     }
                 }
-                PRESS_ENTER_AT => {
+                tick if tick == press_enter_at => {
                     if context
                         .detector_unwrap()
                         .detect_change_channel_menu_opened()
@@ -283,6 +297,34 @@ mod tests {
     }
 
     #[test]
+    fn update_changing_channel_and_send_keys_retry() {
+        let mut keys = MockKeySender::default();
+        let mut detector = MockDetector::default();
+        detector
+            .expect_detect_change_channel_menu_opened()
+            .return_const(true);
+        keys.expect_send().times(2).returning(|_| Ok(()));
+        let context = Context::new(Some(keys), Some(detector));
+        let panicking = Panicking::new(PanicTo::Channel);
+
+        let timeout = Timeout {
+            current: 14,
+            started: true,
+            ..Default::default()
+        };
+        let result = update_changing_channel(&context, KeyKind::F1, panicking, timeout, 1);
+        assert_matches!(result.stage, PanickingStage::ChangingChannel(_, _));
+
+        let timeout = Timeout {
+            current: 29,
+            started: true,
+            ..Default::default()
+        };
+        let result = update_changing_channel(&context, KeyKind::F1, panicking, timeout, 1);
+        assert_matches!(result.stage, PanickingStage::ChangingChannel(_, _));
+    }
+
+    #[test]
     fn update_changing_channel_complete_if_minimap_not_idle() {
         let mut context = Context::new(None, None);
         context.minimap = Minimap::Detecting;
@@ -294,6 +336,21 @@ mod tests {
         };
 
         let result = update_changing_channel(&context, KeyKind::F1, panicking, timeout, 0);
+        assert_matches!(result.stage, PanickingStage::Completing(_, false));
+    }
+
+    #[test]
+    fn update_changing_channel_complete_if_minimap_not_idle_retry() {
+        let mut context = Context::new(None, None);
+        context.minimap = Minimap::Detecting;
+        let panicking = Panicking::new(PanicTo::Channel);
+        let timeout = Timeout {
+            current: 50,
+            started: true,
+            ..Default::default()
+        };
+
+        let result = update_changing_channel(&context, KeyKind::F1, panicking, timeout, 1);
         assert_matches!(result.stage, PanickingStage::Completing(_, false));
     }
 
