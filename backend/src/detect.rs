@@ -85,8 +85,8 @@ pub struct ArrowsCalibrating {
 
 impl ArrowsCalibrating {
     #[inline]
-    pub fn has_spin_arrows(&self) -> bool {
-        self.spin_arrows_calibrated && self.spin_arrows.is_some()
+    pub fn has_rune_region(&self) -> bool {
+        self.rune_region.is_some()
     }
 
     #[cfg(debug_assertions)]

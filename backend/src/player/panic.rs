@@ -242,7 +242,7 @@ fn update_completing(
 }
 
 #[cfg(test)]
-mod panicking_tests {
+mod tests {
     use std::assert_matches::assert_matches;
 
     use anyhow::Ok;
