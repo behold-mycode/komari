@@ -196,18 +196,19 @@ impl DefaultRequestHandler<'_> {
             familiar_swappable_slots: self.settings.familiars.swappable_familiars,
             familiar_swappable_rarities: &self.settings.familiars.swappable_rarities,
             familiar_swap_check_millis: self.settings.familiars.swap_check_millis,
-            elite_boss_key: self.character.as_ref().and_then(|character| {
+            elite_boss_behavior: self.character.as_ref().and_then(|character| {
                 character
-                    .elite_boss_key
-                    .enabled
-                    .then_some(character.elite_boss_key.key)
+                    .elite_boss_behavior_enabled
+                    .then_some(character.elite_boss_behavior)
             }),
+            elite_boss_behavior_key: self
+                .character
+                .as_ref()
+                .map(|character| character.elite_boss_behavior_key)
+                .unwrap_or_default(),
             panic_mode: self.settings.panic_mode,
             enable_panic_mode: self.settings.enable_panic_mode,
             enable_rune_solving: self.settings.enable_rune_solving,
-            enable_change_channel_on_elite_boss_appear: self
-                .settings
-                .enable_change_channel_on_elite_boss_appear,
             enable_familiars_swapping: self.settings.familiars.enable_familiars_swapping,
             enable_reset_normal_actions_on_erda: reset_on_erda,
         };

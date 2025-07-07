@@ -2,8 +2,8 @@ use std::{fmt::Display, fs::File, io::BufReader};
 
 use backend::{
     ActionConfiguration, ActionConfigurationCondition, ActionKeyWith, Character, Class,
-    IntoEnumIterator, KeyBinding, KeyBindingConfiguration, LinkKeyBinding, PotionMode,
-    delete_character, query_characters, update_character, upsert_character,
+    EliteBossBehavior, IntoEnumIterator, KeyBinding, KeyBindingConfiguration, LinkKeyBinding,
+    PotionMode, delete_character, query_characters, update_character, upsert_character,
 };
 use dioxus::prelude::*;
 use futures_util::StreamExt;
@@ -740,33 +740,39 @@ fn SectionOthers(character_view: Memo<Character>, save_character: Callback<Chara
                     value: character_view().disable_adjusting,
                 }
                 div {}
-                KeyBindingConfigurationInput {
-                    label: "Use key on elite boss spawns",
+                CharactersSelect::<EliteBossBehavior> {
+                    label: "Elite boss spawns behavior",
                     disabled: character_view().id.is_none(),
-                    on_value: move |config: Option<KeyBindingConfiguration>| {
+                    on_select: move |elite_boss_behavior| {
                         save_character(Character {
-                            elite_boss_key: config.expect("not optional"),
+                            elite_boss_behavior,
                             ..character_view.peek().clone()
                         });
                     },
-                    value: Some(character_view().elite_boss_key),
+                    selected: character_view().elite_boss_behavior,
+                }
+                KeyBindingInput {
+                    label: "Key to use",
+                    disabled: character_view().id.is_none(),
+                    on_value: move |key: Option<KeyBinding>| {
+                        save_character(Character {
+                            elite_boss_behavior_key: key.expect("not optional"),
+                            ..character_view.peek().clone()
+                        });
+                    },
+                    value: Some(character_view().elite_boss_behavior_key),
                 }
                 CharactersCheckbox {
                     label: "Enabled",
                     disabled: character_view().id.is_none(),
-                    on_value: move |enabled| {
-                        let character = character_view.peek().clone();
+                    on_value: move |elite_boss_behavior_enabled| {
                         save_character(Character {
-                            elite_boss_key: KeyBindingConfiguration {
-                                enabled,
-                                ..character.elite_boss_key
-                            },
-                            ..character
+                            elite_boss_behavior_enabled,
+                            ..character_view.peek().clone()
                         });
                     },
-                    value: character_view().elite_boss_key.enabled,
+                    value: character_view().elite_boss_behavior_enabled,
                 }
-                div {}
                 div { class: "flex gap-2 col-span-3",
                     div { class: "flex-grow",
                         a {

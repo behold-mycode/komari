@@ -42,9 +42,9 @@ pub use {
     database::{
         Action, ActionCondition, ActionConfiguration, ActionConfigurationCondition, ActionKey,
         ActionKeyDirection, ActionKeyWith, ActionMove, Bound, CaptureMode, Character, Class,
-        FamiliarRarity, Familiars, InputMethod, KeyBinding, KeyBindingConfiguration,
-        LinkKeyBinding, Minimap, MobbingKey, Notifications, PanicMode, Platform, Position,
-        PotionMode, RotationMode, Settings, SwappableFamiliars,
+        EliteBossBehavior, FamiliarRarity, Familiars, InputMethod, KeyBinding,
+        KeyBindingConfiguration, LinkKeyBinding, Minimap, MobbingKey, Notifications, PanicMode,
+        Platform, Position, PotionMode, RotationMode, Settings, SwappableFamiliars,
     },
     pathing::MAX_PLATFORMS_COUNT,
     rotator::RotatorMode,

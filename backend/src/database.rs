@@ -142,6 +142,15 @@ pub enum PanicMode {
     GoToTown,
 }
 
+#[derive(
+    Clone, Copy, PartialEq, Default, Debug, Serialize, Deserialize, EnumIter, Display, EnumString,
+)]
+pub enum EliteBossBehavior {
+    #[default]
+    CycleChannel,
+    UseKey,
+}
+
 #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
 pub struct Notifications {
     pub discord_webhook_url: String,
@@ -162,7 +171,6 @@ pub struct Settings {
     pub capture_mode: CaptureMode,
     #[serde(default = "enable_rune_solving_default")]
     pub enable_rune_solving: bool,
-    pub enable_change_channel_on_elite_boss_appear: bool,
     pub enable_panic_mode: bool,
     pub panic_mode: PanicMode,
     pub stop_on_fail_or_change_map: bool,
@@ -186,7 +194,6 @@ impl Default for Settings {
             id: None,
             capture_mode: CaptureMode::default(),
             enable_rune_solving: enable_rune_solving_default(),
-            enable_change_channel_on_elite_boss_appear: false,
             enable_panic_mode: false,
             panic_mode: PanicMode::default(),
             input_method: InputMethod::default(),
@@ -285,7 +292,11 @@ pub struct Character {
     pub disable_adjusting: bool,
     pub actions: Vec<ActionConfiguration>,
     #[serde(default)]
-    pub elite_boss_key: KeyBindingConfiguration,
+    pub elite_boss_behavior_enabled: bool,
+    #[serde(default)]
+    pub elite_boss_behavior: EliteBossBehavior,
+    #[serde(default)]
+    pub elite_boss_behavior_key: KeyBinding,
 }
 
 fn jump_key_default() -> KeyBindingConfiguration {
@@ -340,7 +351,9 @@ impl Default for Character {
             class: Class::default(),
             disable_adjusting: false,
             actions: vec![],
-            elite_boss_key: KeyBindingConfiguration::default(),
+            elite_boss_behavior_enabled: false,
+            elite_boss_behavior_key: KeyBinding::default(),
+            elite_boss_behavior: EliteBossBehavior::default(),
         }
     }
 }
