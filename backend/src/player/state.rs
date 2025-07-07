@@ -18,7 +18,6 @@ use crate::{
     bridge::MouseAction,
     buff::{Buff, BuffKind},
     context::Context,
-    detect::ArrowsState,
     minimap::Minimap,
     network::NotificationKind,
     task::{Task, Update, update_detection_task},
@@ -232,8 +231,6 @@ pub struct PlayerState {
     unstuck_transitioned_count: u32,
     /// Unstuck task for detecting settings when mis-pressing ESC key.
     pub(super) unstuck_task: Option<Task<Result<bool>>>,
-    /// Rune solving task.
-    pub(super) rune_task: Option<Task<Result<ArrowsState>>>,
     /// The number of times [`Player::SolvingRune`] failed.
     rune_failed_count: u32,
     /// Indicates the state will be transitioned to [`Player::CashShopThenExit`] in the next tick.
@@ -418,7 +415,7 @@ impl PlayerState {
     /// Increments the rune validation fail count and sets [`PlayerState::rune_cash_shop`]
     /// if needed.
     #[inline]
-    pub(super) fn track_rune_fail_count(&mut self) {
+    fn track_rune_fail_count(&mut self) {
         self.rune_failed_count += 1;
         if self.rune_failed_count >= MAX_RUNE_FAILED_COUNT {
             self.rune_failed_count = 0;

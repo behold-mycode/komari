@@ -48,7 +48,7 @@ const MINIMAP_JS: &str = r#"
             x = (x / width) * canvas.width;
             y = ((height - y) / height) * canvas.height;
 
-            canvasCtx.fillRect(x - 2, y - 2, 2, 2);
+            canvasCtx.fillRect(x, y, 2, 2);
 
             if (i > 0) {
                 canvasCtx.moveTo(prevX, prevY);
