@@ -154,7 +154,7 @@ fn update_find_region(
     timeout: Timeout,
     retry_count: u32,
 ) -> SolvingRune {
-    match next_timeout_lifecycle(timeout, 30) {
+    match next_timeout_lifecycle(timeout, 35) {
         Lifecycle::Started(timeout) => {
             let _ = context.keys.send(interact_key);
             solving_rune.stage_find_region(calibrating, timeout, retry_count)
@@ -163,7 +163,7 @@ fn update_find_region(
             Ok(ArrowsState::Calibrating(calibrating)) => {
                 solving_rune.stage_solving(calibrating, Timeout::default())
             }
-            Ok(ArrowsState::Complete(keys)) => solving_rune.stage_press_keys(timeout, keys, 0),
+            Ok(ArrowsState::Complete(_)) => unreachable!(),
             Err(_) => {
                 if retry_count + 1 < MAX_RETRY_COUNT && !calibrating.has_rune_region() {
                     // Retry possibly because mis-pressing the interact key
@@ -197,7 +197,9 @@ fn update_solving(
                 Ok(ArrowsState::Calibrating(calibrating)) => {
                     solving_rune.stage_solving(calibrating, timeout)
                 }
-                Ok(ArrowsState::Complete(keys)) => solving_rune.stage_press_keys(timeout, keys, 0),
+                Ok(ArrowsState::Complete(keys)) => {
+                    solving_rune.stage_press_keys(Timeout::default(), keys, 0)
+                }
                 Err(_) => solving_rune.stage_completed(),
             }
         }
@@ -283,7 +285,7 @@ mod tests {
             ArrowsCalibrating::default(),
             Timeout {
                 started: true,
-                current: 30,
+                current: 35,
                 ..Default::default()
             },
             0,
@@ -292,42 +294,14 @@ mod tests {
         assert_matches!(
             result,
             SolvingRune {
-                stage: RuneStage::Solving(_, _)
-            }
-        );
-    }
-
-    #[test]
-    fn update_find_region_to_press_keys_on_complete() {
-        let expected_keys = [KeyKind::A, KeyKind::S, KeyKind::D, KeyKind::F];
-        let mut detector = MockDetector::default();
-        detector
-            .expect_detect_rune_arrows()
-            .return_once(move |_| Ok(ArrowsState::Complete(expected_keys)));
-        let context = Context::new(None, Some(detector));
-        let solving_rune = SolvingRune::default().stage_find_region(
-            ArrowsCalibrating::default(),
-            Timeout::default(),
-            0,
-        );
-
-        let result = update_find_region(
-            &context,
-            solving_rune,
-            KeyKind::default(),
-            ArrowsCalibrating::default(),
-            Timeout {
-                started: true,
-                current: 30,
-                ..Default::default()
-            },
-            0,
-        );
-
-        assert_matches!(
-            result,
-            SolvingRune {
-                stage: RuneStage::PressKeys(_, [KeyKind::A, KeyKind::S, KeyKind::D, KeyKind::F], 0)
+                stage: RuneStage::Solving(
+                    _,
+                    Timeout {
+                        started: false,
+                        current: 0,
+                        ..
+                    },
+                )
             }
         );
     }
@@ -352,7 +326,7 @@ mod tests {
             ArrowsCalibrating::default(),
             Timeout {
                 started: true,
-                current: 30,
+                current: 35,
                 ..Default::default()
             },
             0,
@@ -446,7 +420,15 @@ mod tests {
         assert_matches!(
             result,
             SolvingRune {
-                stage: RuneStage::PressKeys(_, [KeyKind::A, KeyKind::S, KeyKind::D, KeyKind::F], 0)
+                stage: RuneStage::PressKeys(
+                    Timeout {
+                        started: false,
+                        current: 0,
+                        ..
+                    },
+                    [KeyKind::A, KeyKind::S, KeyKind::D, KeyKind::F],
+                    0
+                )
             }
         );
     }
