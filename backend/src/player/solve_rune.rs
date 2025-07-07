@@ -162,7 +162,7 @@ fn update_find_region(
             }
             Ok(ArrowsState::Complete(_)) => unreachable!(),
             Err(_) => {
-                if retry_count + 1 < MAX_RETRY_COUNT && !calibrating.has_rune_region() {
+                if retry_count + 1 < MAX_RETRY_COUNT {
                     // Retry possibly because mis-pressing the interact key
                     solving_rune.stage_find_region(
                         ArrowsCalibrating::default(),
@@ -304,7 +304,7 @@ mod tests {
     }
 
     #[test]
-    fn update_find_region_retry_if_rune_region_not_found() {
+    fn update_find_region_retry() {
         let mut detector = MockDetector::default();
         detector
             .expect_detect_rune_arrows()
