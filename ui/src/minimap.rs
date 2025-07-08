@@ -17,6 +17,11 @@ use crate::{
     select::TextSelect,
 };
 
+const BACKGROUND: Asset = asset!(
+    "assets/background.png",
+    ImageAssetOptions::new().with_webp()
+);
+
 const MINIMAP_JS: &str = r#"
     const canvas = document.getElementById("canvas-minimap");
     const canvasCtx = canvas.getContext("2d");
@@ -309,7 +314,9 @@ pub fn Minimap() -> Element {
     });
 
     rsx! {
-        div { class: "flex flex-col flex-none w-xs xl:w-md",
+        div {
+            class: "flex flex-col flex-none w-xs xl:w-md bg-no-repeat",
+            style: "background-image: url({BACKGROUND}); background-size: 230%; background-position: 57% 50px;",
             Canvas {
                 state,
                 minimap,
