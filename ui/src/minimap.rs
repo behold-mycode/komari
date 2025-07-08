@@ -314,9 +314,11 @@ pub fn Minimap() -> Element {
     });
 
     rsx! {
-        div {
-            class: "flex flex-col flex-none w-xs xl:w-md bg-no-repeat",
-            style: "background-image: url({BACKGROUND}); background-size: 230%; background-position: 57% 50px;",
+        div { class: "relative flex flex-col flex-none w-xs xl:w-md z-0",
+            div {
+                class: "absolute inset-0 bg-no-repeat bg-center w-[130%] -z-1",
+                style: "background-image: url({BACKGROUND}); background-size: 150%; background-position: 85% 70px;",
+            }
             Canvas {
                 state,
                 minimap,
@@ -463,7 +465,7 @@ fn Canvas(
     });
 
     rsx! {
-        div { class: "relative h-31 rounded-2xl bg-gray-900",
+        div { class: "relative h-31 xl:h-33 rounded-2xl bg-gray-900",
             canvas {
                 class: "absolute inset-0 rounded-2xl w-full h-full",
                 id: "canvas-minimap",

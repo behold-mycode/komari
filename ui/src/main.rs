@@ -132,7 +132,7 @@ fn App() -> Element {
         if script_loaded() {
             div { class: "flex min-w-3xl lg:min-w-5xl min-h-120 h-full",
                 Minimap {}
-                div { class: "flex-grow flex flex-col lg:flex-row",
+                div { class: "flex-grow flex flex-col lg:flex-row z-1",
                     Tabs {
                         tabs: TABS.clone(),
                         on_select_tab: move |tab| {
