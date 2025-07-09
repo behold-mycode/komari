@@ -209,12 +209,6 @@ pub trait Detector: 'static + Send + DynClone + Debug {
     /// Detects whether the familiar essence depleted assuming already buffed.
     fn detect_familiar_essence_depleted(&self) -> bool;
 
-    /// Detects whether the maple guide menu is opened.
-    fn detect_maple_guide_menu_opened(&self) -> bool;
-
-    /// Detects all maple guide towns.
-    fn detect_maple_guide_towns(&self) -> Vec<Rect>;
-
     /// Detects whether the change channel menu is opened.
     fn detect_change_channel_menu_opened(&self) -> bool;
 }
@@ -255,8 +249,6 @@ mock! {
         fn detect_familiar_scrollbar(&self) -> Result<Rect>;
         fn detect_familiar_menu_opened(&self) -> bool;
         fn detect_familiar_essence_depleted(&self) -> bool;
-        fn detect_maple_guide_menu_opened(&self) -> bool;
-        fn detect_maple_guide_towns(&self) -> Vec<Rect>;
         fn detect_change_channel_menu_opened(&self) -> bool;
     }
 
@@ -434,14 +426,6 @@ impl Detector for CachedDetector {
 
     fn detect_familiar_essence_depleted(&self) -> bool {
         detect_familiar_essence_depleted(&**self.buffs_grayscale)
-    }
-
-    fn detect_maple_guide_menu_opened(&self) -> bool {
-        detect_maple_guide_menu_opened(&**self.grayscale)
-    }
-
-    fn detect_maple_guide_towns(&self) -> Vec<Rect> {
-        detect_maple_guide_towns(&**self.grayscale)
     }
 
     fn detect_change_channel_menu_opened(&self) -> bool {
@@ -1924,40 +1908,6 @@ fn detect_familiar_essence_depleted(mat: &impl ToInputArray) -> bool {
     });
 
     detect_template(mat, &*TEMPLATE, Point::default(), 0.8).is_ok()
-}
-
-fn detect_maple_guide_menu_opened(mat: &impl ToInputArray) -> bool {
-    static TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {
-        imgcodecs::imdecode(
-            include_bytes!(env!("MAPLE_GUIDE_MENU_TEMPLATE")),
-            IMREAD_GRAYSCALE,
-        )
-        .unwrap()
-    });
-
-    detect_template(mat, &*TEMPLATE, Point::default(), 0.75).is_ok()
-}
-
-fn detect_maple_guide_towns(mat: &impl ToInputArray) -> Vec<Rect> {
-    static TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {
-        imgcodecs::imdecode(
-            include_bytes!(env!("MAPLE_GUIDE_TOWN_TEMPLATE")),
-            IMREAD_GRAYSCALE,
-        )
-        .unwrap()
-    });
-    static TEMPLATE_MASK: LazyLock<Mat> = LazyLock::new(|| {
-        imgcodecs::imdecode(
-            include_bytes!(env!("MAPLE_GUIDE_TOWN_MASK_TEMPLATE")),
-            IMREAD_GRAYSCALE,
-        )
-        .unwrap()
-    });
-
-    detect_template_multiple(mat, &*TEMPLATE, &*TEMPLATE_MASK, Point::default(), 9, 0.75)
-        .into_iter()
-        .filter_map(|result| result.ok().map(|(rect, _)| rect))
-        .collect()
 }
 
 fn detect_change_channel_menu_opened(mat: &impl ToInputArray) -> bool {

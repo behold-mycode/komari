@@ -12,8 +12,8 @@ use ordered_hash_map::OrderedHashMap;
 use rand::seq::IteratorRandom;
 
 use crate::{
-    ActionKeyDirection, ActionKeyWith, Bound, FamiliarRarity, KeyBinding, MobbingKey, PanicMode,
-    Position, SwappableFamiliars,
+    ActionKeyDirection, ActionKeyWith, Bound, FamiliarRarity, KeyBinding, MobbingKey, Position,
+    SwappableFamiliars,
     array::Array,
     buff::{Buff, BuffKind},
     context::{Context, MS_PER_TICK},
@@ -146,7 +146,6 @@ pub struct RotatorBuildArgs<'a> {
     pub familiar_swap_check_millis: u64,
     pub elite_boss_behavior: Option<EliteBossBehavior>,
     pub elite_boss_behavior_key: KeyBinding,
-    pub panic_mode: PanicMode,
     pub enable_panic_mode: bool,
     pub enable_rune_solving: bool,
     pub enable_familiars_swapping: bool,
@@ -166,7 +165,6 @@ impl Rotator {
             familiar_swap_check_millis,
             elite_boss_behavior,
             elite_boss_behavior_key,
-            panic_mode,
             enable_panic_mode,
             enable_rune_solving,
             enable_familiars_swapping,
@@ -260,7 +258,7 @@ impl Rotator {
         if enable_panic_mode {
             self.priority_actions.insert(
                 self.id_counter.fetch_add(1, Ordering::Relaxed),
-                panic_priority_action(panic_mode),
+                panic_priority_action(),
             );
         }
         for (i, key) in buffs.iter().copied() {
@@ -922,17 +920,9 @@ fn buff_priority_action(buff: BuffKind, key: KeyBinding) -> PriorityAction {
 }
 
 #[inline]
-fn panic_priority_action(mode: PanicMode) -> PriorityAction {
-    let to = match mode {
-        PanicMode::CycleChannel => PanicTo::Channel,
-        PanicMode::GoToTown => PanicTo::Town,
-    };
-
+fn panic_priority_action() -> PriorityAction {
     PriorityAction {
         condition: Condition(Box::new(|context, _, last_queued_time| {
-            if context.halting {
-                return ConditionResult::Ignore;
-            }
             match context.minimap {
                 Minimap::Detecting => ConditionResult::Skip,
                 Minimap::Idle(idle) => {
@@ -948,7 +938,9 @@ fn panic_priority_action(mode: PanicMode) -> PriorityAction {
             }
         })),
         condition_kind: None,
-        inner: RotatorAction::Single(PlayerAction::Panic(PlayerActionPanic { to })),
+        inner: RotatorAction::Single(PlayerAction::Panic(PlayerActionPanic {
+            to: PanicTo::Channel,
+        })),
         queue_to_front: true,
         ignoring: false,
         last_queued_time: None,
@@ -1145,17 +1137,16 @@ mod tests {
             familiar_swappable_slots: SwappableFamiliars::default(),
             familiar_swappable_rarities: &HashSet::default(),
             familiar_swap_check_millis: 0,
-            panic_mode: PanicMode::default(),
             elite_boss_behavior: Some(EliteBossBehavior::CycleChannel),
             elite_boss_behavior_key: KeyBinding::default(),
-            enable_panic_mode: false,
+            enable_panic_mode: true,
             enable_rune_solving: true,
             enable_familiars_swapping: false,
             enable_reset_normal_actions_on_erda: false,
         };
 
         rotator.build_actions(args);
-        assert_eq!(rotator.priority_actions.len(), 7);
+        assert_eq!(rotator.priority_actions.len(), 8);
         assert_eq!(rotator.normal_actions.len(), 2);
     }
 
@@ -1176,25 +1167,25 @@ mod tests {
         assert!(!rotator.normal_actions_backward);
         assert_eq!(rotator.normal_index, 1);
 
-        player.clear_actions_aborted();
+        player.clear_actions_aborted(true);
         rotator.rotate_action(&context, &mut player);
         assert_eq!(player.normal_action_id(), Some(1));
         assert!(!rotator.normal_actions_backward);
         assert_eq!(rotator.normal_index, 2);
 
-        player.clear_actions_aborted();
+        player.clear_actions_aborted(true);
         rotator.rotate_action(&context, &mut player);
         assert_eq!(player.normal_action_id(), Some(2));
         assert!(rotator.normal_actions_backward);
         assert_eq!(rotator.normal_index, 1);
 
-        player.clear_actions_aborted();
+        player.clear_actions_aborted(true);
         rotator.rotate_action(&context, &mut player);
         assert_eq!(player.normal_action_id(), Some(1));
         assert!(rotator.normal_actions_backward);
         assert_eq!(rotator.normal_index, 2);
 
-        player.clear_actions_aborted();
+        player.clear_actions_aborted(true);
         rotator.rotate_action(&context, &mut player);
         assert_eq!(player.normal_action_id(), Some(0));
         assert!(!rotator.normal_actions_backward);
@@ -1218,7 +1209,7 @@ mod tests {
         assert!(!rotator.normal_actions_backward);
         assert_eq!(rotator.normal_index, 1);
 
-        player.clear_actions_aborted();
+        player.clear_actions_aborted(true);
 
         rotator.rotate_action(&context, &mut player);
         assert!(player.has_normal_action());
@@ -1382,7 +1373,7 @@ mod tests {
             VecDeque::from_iter([4].into_iter())
         );
 
-        player.clear_actions_aborted();
+        player.clear_actions_aborted(true);
         rotator.rotate_action(&context, &mut player);
         assert!(rotator.priority_queuing_linked_action.is_none());
         assert_eq!(
@@ -1420,7 +1411,7 @@ mod tests {
         );
 
         // Closer to left, further than right -> Go right
-        player.clear_actions_aborted();
+        player.clear_actions_aborted(true);
         player.last_known_pos = Some(Point::new(10, 50));
         rotator.rotate_ping_pong(
             &context,

@@ -136,15 +136,6 @@ fn familiars_swap_check_millis() -> u64 {
 #[derive(
     Clone, Copy, PartialEq, Default, Debug, Serialize, Deserialize, EnumIter, Display, EnumString,
 )]
-pub enum PanicMode {
-    #[default]
-    CycleChannel,
-    GoToTown,
-}
-
-#[derive(
-    Clone, Copy, PartialEq, Default, Debug, Serialize, Deserialize, EnumIter, Display, EnumString,
-)]
 pub enum EliteBossBehavior {
     #[default]
     CycleChannel,
@@ -172,7 +163,6 @@ pub struct Settings {
     #[serde(default = "enable_rune_solving_default")]
     pub enable_rune_solving: bool,
     pub enable_panic_mode: bool,
-    pub panic_mode: PanicMode,
     pub stop_on_fail_or_change_map: bool,
     pub input_method: InputMethod,
     pub input_method_rpc_server_url: String,
@@ -195,7 +185,6 @@ impl Default for Settings {
             capture_mode: CaptureMode::default(),
             enable_rune_solving: enable_rune_solving_default(),
             enable_panic_mode: false,
-            panic_mode: PanicMode::default(),
             input_method: InputMethod::default(),
             input_method_rpc_server_url: String::default(),
             stop_on_fail_or_change_map: false,
@@ -261,12 +250,18 @@ pub struct Character {
     pub name: String,
     pub ropelift_key: Option<KeyBindingConfiguration>,
     pub teleport_key: Option<KeyBindingConfiguration>,
+    #[serde(default = "jump_key_default")]
     pub jump_key: KeyBindingConfiguration,
     pub up_jump_key: Option<KeyBindingConfiguration>,
+    #[serde(default = "key_default")]
     pub interact_key: KeyBindingConfiguration,
+    #[serde(default = "key_default")]
     pub cash_shop_key: KeyBindingConfiguration,
+    #[serde(default = "key_default")]
     pub familiar_menu_key: KeyBindingConfiguration,
-    pub maple_guide_key: KeyBindingConfiguration,
+    #[serde(default = "key_default")]
+    pub to_town_key: KeyBindingConfiguration,
+    #[serde(default = "key_default")]
     pub change_channel_key: KeyBindingConfiguration,
     pub feed_pet_key: KeyBindingConfiguration,
     pub feed_pet_millis: u64,
@@ -274,7 +269,7 @@ pub struct Character {
     pub potion_mode: PotionMode,
     pub health_update_millis: u64,
     pub familiar_buff_key: KeyBindingConfiguration,
-    #[serde(default = "familiar_essence_key_default")]
+    #[serde(default = "key_default")]
     pub familiar_essence_key: KeyBindingConfiguration,
     pub sayram_elixir_key: KeyBindingConfiguration,
     pub aurelia_elixir_key: KeyBindingConfiguration,
@@ -307,7 +302,7 @@ fn jump_key_default() -> KeyBindingConfiguration {
     }
 }
 
-fn familiar_essence_key_default() -> KeyBindingConfiguration {
+fn key_default() -> KeyBindingConfiguration {
     // Enabled is not neccessary but for semantic purpose
     KeyBindingConfiguration {
         key: KeyBinding::default(),
@@ -324,18 +319,18 @@ impl Default for Character {
             teleport_key: None,
             jump_key: jump_key_default(),
             up_jump_key: None,
-            interact_key: KeyBindingConfiguration::default(),
-            cash_shop_key: KeyBindingConfiguration::default(),
-            familiar_menu_key: KeyBindingConfiguration::default(),
-            maple_guide_key: KeyBindingConfiguration::default(),
-            change_channel_key: KeyBindingConfiguration::default(),
+            interact_key: key_default(),
+            cash_shop_key: key_default(),
+            familiar_menu_key: key_default(),
+            to_town_key: key_default(),
+            change_channel_key: key_default(),
             feed_pet_key: KeyBindingConfiguration::default(),
             feed_pet_millis: 320000,
             potion_key: KeyBindingConfiguration::default(),
             potion_mode: PotionMode::EveryMillis(180000),
             health_update_millis: 1000,
             familiar_buff_key: KeyBindingConfiguration::default(),
-            familiar_essence_key: familiar_essence_key_default(),
+            familiar_essence_key: key_default(),
             sayram_elixir_key: KeyBindingConfiguration::default(),
             aurelia_elixir_key: KeyBindingConfiguration::default(),
             exp_x3_key: KeyBindingConfiguration::default(),

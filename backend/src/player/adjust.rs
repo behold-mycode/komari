@@ -88,7 +88,11 @@ pub fn update_adjusting_context(
             {
                 let (y_distance, y_direction) = moving.y_distance_direction_from(true, cur_pos);
                 if y_direction < 0 && y_distance >= FALLING_THRESHOLD {
-                    return Player::Falling(moving.timeout_started(false), cur_pos, true);
+                    return Player::Falling {
+                        moving: moving.timeout_started(false),
+                        anchor: cur_pos,
+                        timeout_on_complete: true,
+                    };
                 }
             }
 
@@ -258,7 +262,14 @@ mod tests {
 
         let player = update_adjusting_context(&context, &mut state, adjusting);
 
-        assert!(matches!(player, Player::Falling(_, _, true)));
+        assert!(matches!(
+            player,
+            Player::Falling {
+                moving: _,
+                anchor: _,
+                timeout_on_complete: true
+            }
+        ));
         assert!(!state.use_immediate_control_flow);
         assert!(state.last_movement.is_none());
     }

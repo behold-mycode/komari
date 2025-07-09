@@ -206,7 +206,6 @@ impl DefaultRequestHandler<'_> {
                 .as_ref()
                 .map(|character| character.elite_boss_behavior_key)
                 .unwrap_or_default(),
-            panic_mode: self.settings.panic_mode,
             enable_panic_mode: self.settings.enable_panic_mode,
             enable_rune_solving: self.settings.enable_rune_solving,
             enable_familiars_swapping: self.settings.familiars.enable_familiars_swapping,
@@ -215,17 +214,21 @@ impl DefaultRequestHandler<'_> {
 
         self.rotator.build_actions(args);
     }
-}
 
-impl RequestHandler for DefaultRequestHandler<'_> {
-    fn on_rotate_actions(&mut self, halting: bool) {
+    pub fn update_context_halting(&mut self, halting: bool, reset_player_to_idle: bool) {
         if self.minimap.data().is_some() && self.character.is_some() {
             self.context.halting = halting;
             if halting {
                 self.rotator.reset_queue();
-                self.player.clear_actions_aborted();
+                self.player.clear_actions_aborted(reset_player_to_idle);
             }
         }
+    }
+}
+
+impl RequestHandler for DefaultRequestHandler<'_> {
+    fn on_rotate_actions(&mut self, halting: bool) {
+        self.update_context_halting(halting, true);
     }
 
     fn on_create_minimap(&self, name: String) -> Option<MinimapData> {
@@ -281,7 +284,7 @@ impl RequestHandler for DefaultRequestHandler<'_> {
         self.player.config.upjump_key = character.up_jump_key.map(|key| key.key.into());
         self.player.config.cash_shop_key = character.cash_shop_key.key.into();
         self.player.config.familiar_key = character.familiar_menu_key.key.into();
-        self.player.config.maple_guide_key = character.maple_guide_key.key.into();
+        self.player.config.to_town_key = character.to_town_key.key.into();
         self.player.config.change_channel_key = character.change_channel_key.key.into();
         self.player.config.potion_key = character.potion_key.key.into();
         self.player.config.use_potion_below_percent =

@@ -6,7 +6,6 @@ use super::{
     timeout::Timeout,
 };
 use crate::{
-    bridge::MouseAction,
     context::Context,
     minimap::Minimap,
     player::timeout::{Lifecycle, next_timeout_lifecycle},
@@ -82,7 +81,7 @@ pub fn update_panicking_context(
         ),
         PanickingStage::GoingToTown(timeout, retry_count) => update_going_to_town(
             context,
-            state.config.maple_guide_key,
+            state.config.to_town_key,
             panicking,
             timeout,
             retry_count,
@@ -100,7 +99,15 @@ pub fn update_panicking_context(
     on_action(
         state,
         |_| Some((next, matches!(next, Player::Idle))),
-        || Player::Idle, // Force cancel if it is not initiated from an action
+        || {
+            if matches!(panicking.to, PanicTo::Town) {
+                // Allow continuing for town even if the bot has already halted
+                next
+            } else {
+                // Force cancel if it is not initiated from an action for other panic kind
+                Player::Idle
+            }
+        },
     )
 }
 
@@ -184,46 +191,27 @@ fn update_going_to_town(
     timeout: Timeout,
     retry_count: u32,
 ) -> Panicking {
-    const GUIDE_FULLY_OPENED_CHECK_AT: u32 = 30;
-
-    match next_timeout_lifecycle(timeout, 50) {
+    match next_timeout_lifecycle(timeout, 90) {
         Lifecycle::Started(timeout) => {
-            if matches!(context.minimap, Minimap::Idle(_)) {
-                if !context.detector_unwrap().detect_maple_guide_menu_opened() {
-                    let _ = context.keys.send(key);
-                }
-            } else {
-                return panicking.stage_completing(Timeout::default(), false);
-            }
-
+            let _ = context.keys.send(key);
             panicking.stage_going_to_town(timeout, retry_count)
         }
         Lifecycle::Ended => {
-            if context.detector_unwrap().detect_maple_guide_menu_opened() {
-                let towns = context.detector_unwrap().detect_maple_guide_towns();
-                let town = context.rng.random_choose(&towns);
-                if let Some(town) = town {
-                    let x = town.x + town.width / 2;
-                    let y = town.y + town.height / 2;
-                    let _ = context.keys.send_mouse(x, y, MouseAction::Click);
-                }
+            let has_confirm_button = context
+                .detector_unwrap()
+                .detect_esc_confirm_button()
+                .is_ok();
+            if has_confirm_button {
+                let _ = context.keys.send(KeyKind::Enter);
             }
 
-            if retry_count + 1 < MAX_RETRY {
+            if !has_confirm_button && retry_count + 1 < MAX_RETRY {
                 panicking.stage_going_to_town(Timeout::default(), retry_count + 1)
             } else {
                 panicking.stage_completing(Timeout::default(), true)
             }
         }
-        Lifecycle::Updated(timeout) => {
-            if timeout.current == GUIDE_FULLY_OPENED_CHECK_AT
-                && !context.detector_unwrap().detect_maple_guide_menu_opened()
-            {
-                let _ = context.keys.send(key);
-            }
-
-            panicking.stage_going_to_town(timeout, retry_count)
-        }
+        Lifecycle::Updated(timeout) => panicking.stage_going_to_town(timeout, retry_count),
     }
 }
 
@@ -259,7 +247,9 @@ fn update_completing(
 mod tests {
     use std::assert_matches::assert_matches;
 
-    use anyhow::Ok;
+    use anyhow::{Ok, anyhow};
+    use mockall::predicate::eq;
+    use opencv::core::Rect;
 
     use super::*;
     use crate::{
@@ -355,14 +345,13 @@ mod tests {
     }
 
     #[test]
-    fn update_going_to_town_send_key_if_menu_not_open_and_minimap_idle() {
+    fn update_going_to_town_started_send_key() {
         let mut keys = MockKeySender::default();
-        keys.expect_send().once().returning(|_| Ok(()));
-        let mut detector = MockDetector::default();
-        detector
-            .expect_detect_maple_guide_menu_opened()
-            .return_const(false);
-        let mut context = Context::new(Some(keys), Some(detector));
+        keys.expect_send()
+            .once()
+            .with(eq(KeyKind::F2))
+            .returning(|_| Ok(()));
+        let mut context = Context::new(Some(keys), None);
         context.minimap = Minimap::Idle(MinimapIdle::default());
 
         let panicking = Panicking::new(PanicTo::Town);
@@ -373,18 +362,56 @@ mod tests {
     }
 
     #[test]
-    fn update_going_to_town_complete_if_not_idle_minimap() {
+    fn update_going_to_town_ended_send_key_and_complete_if_esc_confirm_opened() {
+        let mut keys = MockKeySender::default();
+        keys.expect_send()
+            .once()
+            .with(eq(KeyKind::Enter))
+            .returning(|_| Ok(()));
         let mut detector = MockDetector::default();
         detector
-            .expect_detect_maple_guide_menu_opened()
-            .return_const(true);
+            .expect_detect_esc_confirm_button()
+            .returning(|| Ok(Rect::default()));
+        let context = Context::new(Some(keys), Some(detector));
+
+        let panicking = Panicking::new(PanicTo::Town);
+        let timeout = Timeout {
+            started: true,
+            current: 90,
+            ..Default::default()
+        };
+
+        let result = update_going_to_town(&context, KeyKind::F2, panicking, timeout, 0);
+        assert_matches!(result.stage, PanickingStage::Completing(_, true));
+    }
+
+    #[test]
+    fn update_going_to_town_ended_retry() {
+        let mut detector = MockDetector::default();
+        detector
+            .expect_detect_esc_confirm_button()
+            .returning(|| Err(anyhow!("button not found")));
         let context = Context::new(None, Some(detector));
 
         let panicking = Panicking::new(PanicTo::Town);
-        let timeout = Timeout::default();
+        let timeout = Timeout {
+            started: true,
+            current: 90,
+            ..Default::default()
+        };
 
         let result = update_going_to_town(&context, KeyKind::F2, panicking, timeout, 0);
-        assert_matches!(result.stage, PanickingStage::Completing(_, false));
+        assert_matches!(
+            result.stage,
+            PanickingStage::GoingToTown(
+                Timeout {
+                    started: false,
+                    current: 0,
+                    ..
+                },
+                1
+            )
+        );
     }
 
     #[test]
