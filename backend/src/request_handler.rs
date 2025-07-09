@@ -207,7 +207,6 @@ impl DefaultRequestHandler<'_> {
                 .map(|character| character.elite_boss_behavior_key)
                 .unwrap_or_default(),
             enable_panic_mode: self.settings.enable_panic_mode,
-            enable_go_to_town_if_map_changed: self.settings.stop_on_fail_or_change_map,
             enable_rune_solving: self.settings.enable_rune_solving,
             enable_familiars_swapping: self.settings.familiars.enable_familiars_swapping,
             enable_reset_normal_actions_on_erda: reset_on_erda,
@@ -215,17 +214,21 @@ impl DefaultRequestHandler<'_> {
 
         self.rotator.build_actions(args);
     }
-}
 
-impl RequestHandler for DefaultRequestHandler<'_> {
-    fn on_rotate_actions(&mut self, halting: bool) {
+    pub fn update_context_halting(&mut self, halting: bool, reset_player_to_idle: bool) {
         if self.minimap.data().is_some() && self.character.is_some() {
             self.context.halting = halting;
             if halting {
                 self.rotator.reset_queue();
-                self.player.clear_actions_aborted();
+                self.player.clear_actions_aborted(reset_player_to_idle);
             }
         }
+    }
+}
+
+impl RequestHandler for DefaultRequestHandler<'_> {
+    fn on_rotate_actions(&mut self, halting: bool) {
+        self.update_context_halting(halting, true);
     }
 
     fn on_create_minimap(&self, name: String) -> Option<MinimapData> {

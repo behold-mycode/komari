@@ -374,10 +374,11 @@ impl PlayerState {
         !self.has_priority_action() && matches!(self.normal_action, Some(PlayerAction::PingPong(_)))
     }
 
-    /// Clears both on-going normal and priority actions due to being aborted.
+    /// Clears both on-going normal and priority actions due to being aborted and whether to reset
+    /// the player to [`Player::Idle`].
     #[inline]
-    pub fn clear_actions_aborted(&mut self) {
-        self.reset_to_idle_next_update = true;
+    pub fn clear_actions_aborted(&mut self, should_idle: bool) {
+        self.reset_to_idle_next_update = should_idle;
         self.priority_action = None;
         self.normal_action = None;
     }

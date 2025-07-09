@@ -18,7 +18,7 @@ use strum::IntoEnumIterator;
 use tokio::sync::broadcast;
 
 use crate::{
-    Action, RequestHandler,
+    Action,
     bridge::{DefaultKeySender, ImageCapture, ImageCaptureKind, KeySender, KeySenderMethod},
     buff::{Buff, BuffKind, BuffState},
     database::{CaptureMode, InputMethod, KeyBinding, query_seeds, query_settings},
@@ -26,7 +26,7 @@ use crate::{
     mat::OwnedMat,
     minimap::{Minimap, MinimapState},
     network::{DiscordNotification, NotificationKind},
-    player::{Player, PlayerState},
+    player::{PanicTo, Panicking, Player, PlayerState},
     request_handler::DefaultRequestHandler,
     rng::Rng,
     rotator::Rotator,
@@ -91,8 +91,6 @@ pub struct Context {
     pub buffs: [Buff; BuffKind::COUNT],
     /// Whether the bot is halting.
     pub halting: bool,
-    /// Whether the minimap changed during the current tick update.
-    pub did_minimap_changed: bool,
     /// The game current tick.
     ///
     /// This is increased on each update tick.
@@ -113,7 +111,6 @@ impl Context {
             skills: [Skill::Detecting; SkillKind::COUNT],
             buffs: [Buff::No; BuffKind::COUNT],
             halting: false,
-            did_minimap_changed: false,
             tick: 0,
         }
     }
@@ -212,7 +209,6 @@ fn update_loop() {
         skills: [Skill::Detecting],
         buffs: [Buff::No; BuffKind::COUNT],
         halting: true,
-        did_minimap_changed: false,
         tick: 0,
     };
     let mut player_state = PlayerState::default();
@@ -231,13 +227,12 @@ fn update_loop() {
 
     loop_with_fps(FPS, || {
         let mat = image_capture.grab().map(OwnedMat::new);
+        let was_minimap_idle = matches!(context.minimap, Minimap::Idle(_));
         let was_player_alive = !player_state.is_dead;
         let detector = mat.map(CachedDetector::new);
 
         context.tick += 1;
         if let Some(detector) = detector {
-            let was_minimap_idle = matches!(context.minimap, Minimap::Idle(_));
-
             context.detector = Some(Box::new(detector));
             context.minimap = fold_context(&context, context.minimap, &mut minimap_state);
             context.player = fold_context(&context, context.player, &mut player_state);
@@ -251,8 +246,6 @@ fn update_loop() {
             for (i, state) in buff_states.iter_mut().enumerate().take(context.buffs.len()) {
                 context.buffs[i] = fold_context(&context, context.buffs[i], state);
             }
-            context.did_minimap_changed =
-                was_minimap_idle && matches!(context.minimap, Minimap::Detecting);
             // Rotating action must always be done last
             rotator.rotate_action(&context, &mut player_state);
         }
@@ -306,9 +299,21 @@ fn update_loop() {
         // abort actions and send notification
         if handler.minimap.data().is_some() && !handler.context.halting {
             let player_died = was_player_alive && handler.player.is_dead;
-            let can_halt_or_notify = handler.context.did_minimap_changed;
-            if player_died || (can_halt_or_notify && handler.settings.stop_on_fail_or_change_map) {
-                handler.on_rotate_actions(true);
+            let can_halt_or_notify =
+                was_minimap_idle && matches!(handler.context.minimap, Minimap::Detecting);
+            match (
+                player_died,
+                can_halt_or_notify,
+                handler.settings.stop_on_fail_or_change_map,
+            ) {
+                (true, _, _) => {
+                    handler.update_context_halting(true, true);
+                }
+                (_, true, true) => {
+                    handler.update_context_halting(true, false);
+                    handler.context.player = Player::Panicking(Panicking::new(PanicTo::Town));
+                }
+                _ => (),
             }
             if can_halt_or_notify {
                 drop(settings_borrow_mut); // For notification to borrow immutably
