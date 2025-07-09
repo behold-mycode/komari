@@ -217,17 +217,19 @@ After swapping, it will save the setup and cause the familiar buff to turn off. 
 
 #### Panic Mode
 (From v0.14)
-Panic mode can be enabled in `Settings` tab and:
-- If another player (friend, guild, stranger) appears in the same map for 15 seconds, it will enter `Panicking` state
-- Has two modes:
-    - `CycleChannel`: Cycles through channels until a map without another player is found
-    - `GoingToTown`: Uses Maple Guide to go to town
+Panic mode can be enabled in the `Settings` tab. Once enabled, if another player (friend, guild, stranger) appears in the same map for 15 seconds, it will enter `Panicking` state and cycle through channels until a channel without any other player is found.
 
-The behavior of `GoingToTown` should be used with `Stop actions on fail or map changed` enabled or the bot will continue running. However, `CycleChannel` does not affect `Stop actions on fail or map changed` if the map is changed due to channel changing. When using either of the mode, ensure the key bindings are set up first.
+(From v0.18)
+If `Stop actions on fail or map changed` is enabled, the bot will stop upon failure and go to town. 
 
-#### Change Channel On Elite Boss
-(From v0.15)
-When this option is enabled in `Settings`, it will queue a channel change action when an elite boss appears.
+Requires setting up key bindings for `To town` and `Change channel` first.
+
+#### Elite Boss Spawns Behavior
+(From v0.17, previously known as `Change Channel On Elite Boss`)
+
+Added `Elite boss spawns behavior` in `Characters` tab with two behavior types:
+- `CycleChannel`: Queues a channel change (`Panicking` state) action when an elite boss appears
+- `UseKey`: Uses a key when elite boss appears (e.g. useful for origin skill)
 
 ## Video guides
 From v0.16, due to UI change, the first two videos are now outdated but the general concepts still apply.
