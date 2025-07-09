@@ -206,8 +206,8 @@ impl DefaultRequestHandler<'_> {
                 .as_ref()
                 .map(|character| character.elite_boss_behavior_key)
                 .unwrap_or_default(),
-            panic_mode: self.settings.panic_mode,
             enable_panic_mode: self.settings.enable_panic_mode,
+            enable_go_to_town_if_map_changed: self.settings.stop_on_fail_or_change_map,
             enable_rune_solving: self.settings.enable_rune_solving,
             enable_familiars_swapping: self.settings.familiars.enable_familiars_swapping,
             enable_reset_normal_actions_on_erda: reset_on_erda,
@@ -281,7 +281,7 @@ impl RequestHandler for DefaultRequestHandler<'_> {
         self.player.config.upjump_key = character.up_jump_key.map(|key| key.key.into());
         self.player.config.cash_shop_key = character.cash_shop_key.key.into();
         self.player.config.familiar_key = character.familiar_menu_key.key.into();
-        self.player.config.maple_guide_key = character.maple_guide_key.key.into();
+        self.player.config.to_town_key = character.to_town_key.key.into();
         self.player.config.change_channel_key = character.change_channel_key.key.into();
         self.player.config.potion_key = character.potion_key.key.into();
         self.player.config.use_potion_below_percent =

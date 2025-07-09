@@ -2,9 +2,8 @@ use std::{fmt::Display, fs::File, io::BufReader};
 
 use backend::{
     CaptureMode, FamiliarRarity, Familiars, InputMethod, IntoEnumIterator, KeyBinding,
-    KeyBindingConfiguration, Notifications, PanicMode, Settings as SettingsData,
-    SwappableFamiliars, query_capture_handles, query_settings, select_capture_handle,
-    update_settings, upsert_settings,
+    KeyBindingConfiguration, Notifications, Settings as SettingsData, SwappableFamiliars,
+    query_capture_handles, query_settings, select_capture_handle, update_settings, upsert_settings,
 };
 use dioxus::prelude::*;
 use futures_util::StreamExt;
@@ -569,7 +568,6 @@ fn SectionOthers(
                     },
                     value: settings_view().stop_on_fail_or_change_map,
                 }
-                div {}
                 SettingsCheckbox {
                     label: "Enable panic mode",
                     on_value: move |enable_panic_mode| {
@@ -579,17 +577,6 @@ fn SectionOthers(
                         });
                     },
                     value: settings_view().enable_panic_mode,
-                }
-                SettingsEnumSelect::<PanicMode> {
-                    label: "Mode",
-                    disabled: !settings_view().enable_panic_mode,
-                    on_select: move |panic_mode| async move {
-                        save_settings(SettingsData {
-                            panic_mode,
-                            ..settings_view.peek().clone()
-                        });
-                    },
-                    selected: settings_view().panic_mode,
                 }
                 div {
                     a { id: export_element_id(), class: "w-0 h-0 invisible" }

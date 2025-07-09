@@ -12,8 +12,8 @@ use ordered_hash_map::OrderedHashMap;
 use rand::seq::IteratorRandom;
 
 use crate::{
-    ActionKeyDirection, ActionKeyWith, Bound, FamiliarRarity, KeyBinding, MobbingKey, PanicMode,
-    Position, SwappableFamiliars,
+    ActionKeyDirection, ActionKeyWith, Bound, FamiliarRarity, KeyBinding, MobbingKey, Position,
+    SwappableFamiliars,
     array::Array,
     buff::{Buff, BuffKind},
     context::{Context, MS_PER_TICK},
@@ -146,8 +146,8 @@ pub struct RotatorBuildArgs<'a> {
     pub familiar_swap_check_millis: u64,
     pub elite_boss_behavior: Option<EliteBossBehavior>,
     pub elite_boss_behavior_key: KeyBinding,
-    pub panic_mode: PanicMode,
     pub enable_panic_mode: bool,
+    pub enable_go_to_town_if_map_changed: bool,
     pub enable_rune_solving: bool,
     pub enable_familiars_swapping: bool,
     pub enable_reset_normal_actions_on_erda: bool,
@@ -166,8 +166,8 @@ impl Rotator {
             familiar_swap_check_millis,
             elite_boss_behavior,
             elite_boss_behavior_key,
-            panic_mode,
             enable_panic_mode,
+            enable_go_to_town_if_map_changed,
             enable_rune_solving,
             enable_familiars_swapping,
             enable_reset_normal_actions_on_erda,
@@ -260,7 +260,13 @@ impl Rotator {
         if enable_panic_mode {
             self.priority_actions.insert(
                 self.id_counter.fetch_add(1, Ordering::Relaxed),
-                panic_priority_action(panic_mode),
+                panic_priority_action(),
+            );
+        }
+        if enable_go_to_town_if_map_changed {
+            self.priority_actions.insert(
+                self.id_counter.fetch_add(1, Ordering::Relaxed),
+                go_to_town_on_map_changed_priority_action(),
             );
         }
         for (i, key) in buffs.iter().copied() {
@@ -922,17 +928,9 @@ fn buff_priority_action(buff: BuffKind, key: KeyBinding) -> PriorityAction {
 }
 
 #[inline]
-fn panic_priority_action(mode: PanicMode) -> PriorityAction {
-    let to = match mode {
-        PanicMode::CycleChannel => PanicTo::Channel,
-        PanicMode::GoToTown => PanicTo::Town,
-    };
-
+fn panic_priority_action() -> PriorityAction {
     PriorityAction {
         condition: Condition(Box::new(|context, _, last_queued_time| {
-            if context.halting {
-                return ConditionResult::Ignore;
-            }
             match context.minimap {
                 Minimap::Detecting => ConditionResult::Skip,
                 Minimap::Idle(idle) => {
@@ -948,7 +946,27 @@ fn panic_priority_action(mode: PanicMode) -> PriorityAction {
             }
         })),
         condition_kind: None,
-        inner: RotatorAction::Single(PlayerAction::Panic(PlayerActionPanic { to })),
+        inner: RotatorAction::Single(PlayerAction::Panic(PlayerActionPanic {
+            to: PanicTo::Channel,
+        })),
+        queue_to_front: true,
+        ignoring: false,
+        last_queued_time: None,
+    }
+}
+
+#[inline]
+fn go_to_town_on_map_changed_priority_action() -> PriorityAction {
+    PriorityAction {
+        condition: Condition(Box::new(|context, _, _| {
+            if context.did_minimap_changed {
+                ConditionResult::Queue
+            } else {
+                ConditionResult::Skip
+            }
+        })),
+        condition_kind: None,
+        inner: RotatorAction::Single(PlayerAction::Panic(PlayerActionPanic { to: PanicTo::Town })),
         queue_to_front: true,
         ignoring: false,
         last_queued_time: None,
@@ -1145,17 +1163,17 @@ mod tests {
             familiar_swappable_slots: SwappableFamiliars::default(),
             familiar_swappable_rarities: &HashSet::default(),
             familiar_swap_check_millis: 0,
-            panic_mode: PanicMode::default(),
             elite_boss_behavior: Some(EliteBossBehavior::CycleChannel),
             elite_boss_behavior_key: KeyBinding::default(),
-            enable_panic_mode: false,
+            enable_panic_mode: true,
+            enable_go_to_town_if_map_changed: true,
             enable_rune_solving: true,
             enable_familiars_swapping: false,
             enable_reset_normal_actions_on_erda: false,
         };
 
         rotator.build_actions(args);
-        assert_eq!(rotator.priority_actions.len(), 7);
+        assert_eq!(rotator.priority_actions.len(), 9);
         assert_eq!(rotator.normal_actions.len(), 2);
     }
 

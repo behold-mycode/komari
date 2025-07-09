@@ -350,7 +350,11 @@ pub fn update_moving_context(
         && y_distance >= state.falling_threshold(is_intermediate)
     {
         return abort_action_on_state_repeat(
-            Player::Falling(moving, cur_pos, false),
+            Player::Falling {
+                moving,
+                anchor: cur_pos,
+                timeout_on_complete: false,
+            },
             context,
             state,
         );
@@ -573,7 +577,14 @@ mod tests {
 
         let player = update_moving_context(&context, &mut state, dest, false, None);
 
-        assert_matches!(player, Player::Falling(_, _, _));
+        assert_matches!(
+            player,
+            Player::Falling {
+                moving: _,
+                anchor: _,
+                timeout_on_complete: _
+            }
+        );
     }
 
     #[test]

@@ -254,15 +254,15 @@ fn SectionKeyBindings(
                     value: character_view().cash_shop_key,
                 }
                 KeyBindingConfigurationInput {
-                    label: "Maple guide",
+                    label: "To town",
                     disabled: character_view().id.is_none(),
                     on_value: move |key_config: Option<KeyBindingConfiguration>| {
                         save_character(Character {
-                            maple_guide_key: key_config.expect("not optional"),
+                            to_town_key: key_config.expect("not optional"),
                             ..character_view.peek().clone()
                         });
                     },
-                    value: character_view().maple_guide_key,
+                    value: character_view().to_town_key,
                 }
                 KeyBindingConfigurationInput {
                     label: "Change channel",

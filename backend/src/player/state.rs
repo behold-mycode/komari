@@ -122,8 +122,8 @@ pub struct PlayerConfiguration {
     pub cash_shop_key: KeyKind,
     /// The familiar key.
     pub familiar_key: KeyKind,
-    /// The maple guide key.
-    pub maple_guide_key: KeyKind,
+    /// The going to town key.
+    pub to_town_key: KeyKind,
     /// The change channel key.
     pub change_channel_key: KeyKind,
     /// The potion key.

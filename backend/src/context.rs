@@ -8,6 +8,7 @@ use std::{
 };
 
 use dyn_clone::clone_box;
+use log::debug;
 use opencv::{
     core::{Vector, VectorToVec},
     imgcodecs::imencode_def,
@@ -25,7 +26,7 @@ use crate::{
     mat::OwnedMat,
     minimap::{Minimap, MinimapState},
     network::{DiscordNotification, NotificationKind},
-    player::{PanicTo, Panicking, Player, PlayerState},
+    player::{Player, PlayerState},
     request_handler::DefaultRequestHandler,
     rng::Rng,
     rotator::Rotator,
@@ -39,6 +40,7 @@ pub const MS_PER_TICK: u64 = MS_PER_TICK_F32 as u64;
 pub const MS_PER_TICK_F32: f32 = 1000.0 / FPS as f32;
 
 /// A control flow to use after a contextual state update.
+#[derive(Debug)]
 pub enum ControlFlow<T> {
     /// The contextual state is updated immediately.
     Immediate(T),
@@ -67,6 +69,8 @@ pub trait Contextual {
 #[derive(Debug)]
 pub struct Context {
     /// The `MapleStory` class game handle.
+    ///
+    /// This is always the default game handle (e.g. MapleStoryClass).
     pub handle: Handle,
     /// A struct to send key inputs.
     pub keys: Box<dyn KeySender>,
@@ -87,6 +91,8 @@ pub struct Context {
     pub buffs: [Buff; BuffKind::COUNT],
     /// Whether the bot is halting.
     pub halting: bool,
+    /// Whether the minimap changed during the current tick update.
+    pub did_minimap_changed: bool,
     /// The game current tick.
     ///
     /// This is increased on each update tick.
@@ -107,6 +113,7 @@ impl Context {
             skills: [Skill::Detecting; SkillKind::COUNT],
             buffs: [Buff::No; BuffKind::COUNT],
             halting: false,
+            did_minimap_changed: false,
             tick: 0,
         }
     }
@@ -205,6 +212,7 @@ fn update_loop() {
         skills: [Skill::Detecting],
         buffs: [Buff::No; BuffKind::COUNT],
         halting: true,
+        did_minimap_changed: false,
         tick: 0,
     };
     let mut player_state = PlayerState::default();
@@ -224,11 +232,12 @@ fn update_loop() {
     loop_with_fps(FPS, || {
         let mat = image_capture.grab().map(OwnedMat::new);
         let was_player_alive = !player_state.is_dead;
-        let was_minimap_idle = matches!(context.minimap, Minimap::Idle(_));
         let detector = mat.map(CachedDetector::new);
 
         context.tick += 1;
         if let Some(detector) = detector {
+            let was_minimap_idle = matches!(context.minimap, Minimap::Idle(_));
+
             context.detector = Some(Box::new(detector));
             context.minimap = fold_context(&context, context.minimap, &mut minimap_state);
             context.player = fold_context(&context, context.player, &mut player_state);
@@ -242,6 +251,8 @@ fn update_loop() {
             for (i, state) in buff_states.iter_mut().enumerate().take(context.buffs.len()) {
                 context.buffs[i] = fold_context(&context, context.buffs[i], state);
             }
+            context.did_minimap_changed =
+                was_minimap_idle && matches!(context.minimap, Minimap::Detecting);
             // Rotating action must always be done last
             rotator.rotate_action(&context, &mut player_state);
         }
@@ -294,18 +305,8 @@ fn update_loop() {
         // Upon accidental or white roomed causing map to change,
         // abort actions and send notification
         if handler.minimap.data().is_some() && !handler.context.halting {
-            let minimap_changed =
-                was_minimap_idle && matches!(handler.context.minimap, Minimap::Detecting);
             let player_died = was_player_alive && handler.player.is_dead;
-            let can_halt_or_notify = minimap_changed
-                && !matches!(
-                    handler.context.player,
-                    Player::Panicking(Panicking {
-                        to: PanicTo::Channel,
-                        ..
-                    })
-                );
-
+            let can_halt_or_notify = handler.context.did_minimap_changed;
             if player_died || (can_halt_or_notify && handler.settings.stop_on_fail_or_change_map) {
                 handler.on_rotate_actions(true);
             }
@@ -341,16 +342,29 @@ where
 
 #[inline]
 fn loop_with_fps(fps: u32, mut on_tick: impl FnMut()) {
+    #[cfg(debug_assertions)]
+    const LOG_INTERVAL_SECS: u64 = 5;
+
     let nanos_per_frame = (1_000_000_000 / fps) as u128;
+    #[cfg(debug_assertions)]
+    let mut last_logged_instant = Instant::now();
+
     loop {
         let start = Instant::now();
 
         on_tick();
 
         let now = Instant::now();
-        let elapsed_nanos = now.duration_since(start).as_nanos();
+        let elapsed_duration = now.duration_since(start);
+        let elapsed_nanos = elapsed_duration.as_nanos();
         if elapsed_nanos <= nanos_per_frame {
             thread::sleep(Duration::new(0, (nanos_per_frame - elapsed_nanos) as u32));
+        } else {
+            #[cfg(debug_assertions)]
+            if now.duration_since(last_logged_instant).as_secs() >= LOG_INTERVAL_SECS {
+                last_logged_instant = now;
+                debug!(target: "context", "ticking running late at {}", elapsed_duration.as_millis());
+            }
         }
     }
 }

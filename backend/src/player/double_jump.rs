@@ -154,7 +154,11 @@ pub fn update_double_jumping_context(
             {
                 let (y_distance, y_direction) = moving.y_distance_direction_from(true, moving.pos);
                 if y_direction < 0 && y_distance >= FALLING_THRESHOLD {
-                    return Player::Falling(moving.timeout_started(false), moving.pos, true);
+                    return Player::Falling {
+                        moving: moving.timeout_started(false),
+                        anchor: moving.pos,
+                        timeout_on_complete: true,
+                    };
                 }
             }
 
@@ -389,11 +393,11 @@ fn on_ping_pong_use_key_action(
 
     if cur_pos.y > bound_y_max || should_downward {
         return Some((
-            Player::Falling(
-                Moving::new(cur_pos, Point::new(cur_pos.x, bound.y), false, None),
-                cur_pos,
-                true,
-            ),
+            Player::Falling {
+                moving: Moving::new(cur_pos, Point::new(cur_pos.x, bound.y), false, None),
+                anchor: cur_pos,
+                timeout_on_complete: true,
+            },
             false,
         ));
     }
@@ -474,7 +478,14 @@ mod tests {
         let double_jump = DoubleJumping::new(moving, false, false);
 
         let player = update_double_jumping_context(&context, &mut state, double_jump);
-        assert_matches!(player, Player::Falling(_, _, true));
+        assert_matches!(
+            player,
+            Player::Falling {
+                moving: _,
+                anchor: _,
+                timeout_on_complete: true
+            }
+        );
     }
 
     #[test]
@@ -709,7 +720,17 @@ mod tests {
             true,
             false,
         );
-        matches!(result, Some((Player::Falling(_, _, true), false)));
+        matches!(
+            result,
+            Some((
+                Player::Falling {
+                    moving: _,
+                    anchor: _,
+                    timeout_on_complete: true
+                },
+                false
+            ))
+        );
     }
 
     // TODO: Add tests for player action

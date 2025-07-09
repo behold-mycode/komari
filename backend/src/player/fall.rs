@@ -60,11 +60,11 @@ pub fn update_falling_context(
         MovingLifecycle::Started(moving) => {
             // Stall until stationary before doing a fall by resetting timeout started
             if !state.is_stationary {
-                return Player::Falling(
-                    moving.timeout_started(false),
-                    moving.pos,
+                return Player::Falling {
+                    moving: moving.timeout_started(false),
+                    anchor: moving.pos,
                     timeout_on_complete,
-                );
+                };
             }
 
             // Check if destination is already reached before starting
@@ -84,7 +84,11 @@ pub fn update_falling_context(
                 let _ = context.keys.send(state.config.jump_key);
             }
 
-            Player::Falling(moving, anchor, timeout_on_complete)
+            Player::Falling {
+                moving,
+                anchor,
+                timeout_on_complete,
+            }
         }
         MovingLifecycle::Ended(moving) => {
             let _ = context.keys.send_up(KeyKind::Down);
@@ -109,7 +113,11 @@ pub fn update_falling_context(
                 |state, action| {
                     on_player_action(context, action, moving, state.config.teleport_key.is_some())
                 },
-                || Player::Falling(moving, anchor, timeout_on_complete),
+                || Player::Falling {
+                    moving,
+                    anchor,
+                    timeout_on_complete,
+                },
             )
         }
     }
@@ -273,14 +281,14 @@ mod tests {
         let player = update_falling_context(&context, &mut state, moving, anchor, true);
         assert_matches!(
             player,
-            Player::Falling(
-                Moving {
+            Player::Falling {
+                moving: Moving {
                     timeout: Timeout { current: 8, .. },
                     ..
                 },
-                _,
-                _
-            )
+                anchor: _,
+                timeout_on_complete: _
+            }
         );
 
         // (3) Do not timeout early after complete if disabled
@@ -295,14 +303,14 @@ mod tests {
         let player = update_falling_context(&context, &mut state, moving, anchor, false);
         assert_matches!(
             player,
-            Player::Falling(
-                Moving {
+            Player::Falling {
+                moving: Moving {
                     timeout: Timeout { current: 1, .. },
                     ..
                 },
-                _,
-                _
-            )
+                anchor: _,
+                timeout_on_complete: _
+            }
         );
     }
 
