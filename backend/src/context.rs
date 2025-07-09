@@ -298,9 +298,17 @@ fn update_loop() {
         // Upon accidental or white roomed causing map to change,
         // abort actions and send notification
         if handler.minimap.data().is_some() && !handler.context.halting {
-            let player_died = was_player_alive && handler.player.is_dead;
-            let can_halt_or_notify =
+            let minimap_changed =
                 was_minimap_idle && matches!(handler.context.minimap, Minimap::Detecting);
+            let player_died = was_player_alive && handler.player.is_dead;
+            let can_halt_or_notify = minimap_changed
+                && !matches!(
+                    handler.context.player,
+                    Player::Panicking(Panicking {
+                        to: PanicTo::Channel,
+                        ..
+                    })
+                );
             match (
                 player_died,
                 can_halt_or_notify,
