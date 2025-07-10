@@ -19,9 +19,9 @@ use crate::{
     database::{Action, ActionCondition, ActionKey, ActionMove, EliteBossBehavior},
     minimap::Minimap,
     player::{
-        GRAPPLING_MAX_THRESHOLD, PanicTo, PingPongDirection, Player, PlayerAction,
-        PlayerActionAutoMob, PlayerActionFamiliarsSwapping, PlayerActionKey, PlayerActionPanic,
-        PlayerActionPingPong, PlayerState, Quadrant,
+        GRAPPLING_THRESHOLD, PanicTo, PingPongDirection, Player, PlayerAction, PlayerActionAutoMob,
+        PlayerActionFamiliarsSwapping, PlayerActionKey, PlayerActionPanic, PlayerActionPingPong,
+        PlayerState, Quadrant,
     },
     skill::{Skill, SkillKind},
     task::{Task, Update, update_detection_task},
@@ -552,7 +552,7 @@ impl Rotator {
             .iter()
             .filter_map(|point| {
                 let y = idle.bbox.height - point.y;
-                let point = if y <= pos.y || (y - pos.y).abs() <= GRAPPLING_MAX_THRESHOLD {
+                let point = if y <= pos.y || (y - pos.y).abs() <= GRAPPLING_THRESHOLD {
                     Some(Point::new(point.x, y))
                 } else {
                     None
