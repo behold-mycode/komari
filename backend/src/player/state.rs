@@ -232,7 +232,10 @@ pub struct PlayerState {
     ///
     /// This will help auto-mobbing ignores positions that are known to be not reachable.
     auto_mob_ignore_xs_map: HashMap<i32, Vec<(Range<i32>, u32)>>,
+    /// The last auto-mobbing quadrant kind.
     auto_mob_last_quadrant: Option<Quadrant>,
+    /// The last auto-mobbing bound's quadrant relative to bottom-left player coordinate.
+    auto_mob_last_quadrant_bound: Option<Rect>,
     /// Tracks whether movement-related actions do not change the player position after a while.
     ///
     /// Resets when a limit is reached (for unstucking) or position did change.
@@ -604,7 +607,14 @@ impl PlayerState {
                 Rect::new(bound.x, bound_y_mid, bound_width_half, bound_height_half)
             }
         };
+
         self.auto_mob_last_quadrant = Some(next_quadrant);
+        self.auto_mob_last_quadrant_bound = Some(Rect::new(
+            next_quadrant_bound.x,
+            bbox.height - next_quadrant_bound.br().y,
+            next_quadrant_bound.width,
+            next_quadrant_bound.height,
+        ));
 
         let bound_xs = next_quadrant_bound.x..(next_quadrant_bound.x + next_quadrant_bound.width);
         let bound_ys = next_quadrant_bound.y..(next_quadrant_bound.y + next_quadrant_bound.height);
@@ -693,10 +703,23 @@ impl PlayerState {
             return None;
         }
 
-        self.auto_mob_reachable_y = y;
-        debug!(target: "player", "auto mob reachable y {:?} {:?}", y, self.auto_mob_reachable_y_map);
+        let mob_pos = Point::new(mob_pos.x, y.unwrap_or(mob_pos.y));
+        if self
+            .auto_mob_last_quadrant_bound
+            .is_some_and(|bound| !bound.contains(mob_pos))
+        {
+            None
+        } else {
+            Some(mob_pos)
+        }
+    }
 
-        Some(Point::new(mob_pos.x, y.unwrap_or(mob_pos.y)))
+    /// Sets the auto-mobbing reachable y previously retrieved
+    /// from [`Self::auto_mob_pick_reachable_y_position`].
+    ///
+    /// This function should be called after the above function if the returned value is [`Some`].
+    pub fn auto_mob_set_reachable_y(&mut self, y: i32) {
+        self.auto_mob_reachable_y = Some(y);
     }
 
     fn auto_mob_populate_reachable_y(&mut self, context: &Context) {
