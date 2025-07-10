@@ -553,9 +553,11 @@ impl PlayerState {
         self.auto_mob_last_quadrant
     }
 
-    /// Picks a pathing point in auto mobbing to move to.
+    /// Picks a pathing point in auto mobbing to move to where `bound` is relative to the minimap
+    /// top-left coordinate.
     ///
-    /// `bound` is relative to the minimap top-left coordinate.
+    /// The current implementation chooses a pathing point going clockwise order in the four
+    /// quadrant of `bound`.
     ///
     /// The returned [`Point`] is in player coordinate relative to bottom-left.
     #[inline]
@@ -634,8 +636,8 @@ impl PlayerState {
                     .iter()
                     .filter_map(|(y, count)| {
                         if *count >= AUTO_MOB_REACHABLE_Y_SOLIDIFY_COUNT {
-                            let y = bbox.height - y;
-                            bound_ys.contains(&y).then_some(y)
+                            let y_inverted = bbox.height - y;
+                            bound_ys.contains(&y_inverted).then_some(*y)
                         } else {
                             None
                         }
@@ -1125,8 +1127,14 @@ mod tests {
         context::Context,
         minimap::{Minimap, MinimapIdle},
         pathing::{Platform, find_neighbors},
-        player::{PlayerAction, PlayerActionAutoMob, PlayerState},
+        player::{PlayerAction, PlayerActionAutoMob, PlayerState, Quadrant},
+        rng::Rng,
     };
+
+    const SEED: [u8; 32] = [
+        64, 241, 206, 219, 49, 21, 218, 145, 254, 152, 68, 176, 242, 238, 152, 14, 176, 241, 153,
+        64, 44, 192, 172, 191, 191, 157, 107, 206, 193, 55, 115, 68,
+    ];
 
     #[test]
     fn auto_mob_pick_reachable_y_should_ignore_solidified_x_range() {
@@ -1291,5 +1299,62 @@ mod tests {
         let gaps = map.get(&5).unwrap();
         assert_eq!(gaps.len(), 1);
         assert_eq!(gaps[0].0, (10..100).into());
+    }
+
+    #[test]
+    fn auto_mob_pathing_point_initial_quadrant_rotation() {
+        let mut state = PlayerState {
+            last_known_pos: Some(Point::new(10, 10)), // Bottom-left in minimap rectangle
+            ..Default::default()
+        };
+        let platforms = vec![
+            Platform::new(0..20, 80), // Within top-left quadrant of minimap rectangle
+        ];
+        let bbox = Rect::new(0, 0, 100, 100); // Minimap rectangle
+
+        let mut idle = MinimapIdle::default();
+        idle.platforms = Array::from_iter(find_neighbors(&platforms, 25, 7, 41));
+        idle.bbox = bbox;
+
+        let rng = Rng::new(SEED);
+        let context = Context {
+            minimap: Minimap::Idle(idle),
+            rng,
+            ..Context::new(None, None)
+        };
+
+        let bound = Rect::new(0, 0, 100, 100); // Whole map
+        let point = state.auto_mob_pathing_point(&context, bound);
+
+        assert!(point.x >= 0 && point.x <= 20); // Platform xs
+        assert_eq!(point.y, 80); // Platform y
+        assert_matches!(state.auto_mob_last_quadrant, Some(Quadrant::TopLeft));
+    }
+
+    #[test]
+    fn auto_mob_pathing_point_fallbacks_to_reachable_y_map() {
+        let mut state = PlayerState {
+            auto_mob_last_quadrant: Some(Quadrant::BottomRight),
+            auto_mob_reachable_y_map: HashMap::from([(20, 4)]), // Solidified and in bottom-left
+            ..Default::default()
+        };
+
+        let bbox = Rect::new(0, 0, 100, 100);
+        let mut idle = MinimapIdle::default();
+        idle.bbox = bbox;
+
+        let rng = Rng::new(SEED);
+        let context = Context {
+            minimap: Minimap::Idle(idle),
+            rng,
+            ..Context::new(None, None)
+        };
+
+        let bound = Rect::new(0, 0, 100, 100);
+        let point = state.auto_mob_pathing_point(&context, bound);
+
+        assert_eq!(point.x, 37);
+        assert_eq!(point.y, 20); // 100 - 80
+        assert_matches!(state.auto_mob_last_quadrant, Some(Quadrant::BottomLeft));
     }
 }
