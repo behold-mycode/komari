@@ -9,6 +9,7 @@
 
 use std::sync::{LazyLock, Mutex};
 
+use strum::Display;
 use tokio::{
     sync::{
         broadcast, mpsc,
@@ -169,6 +170,14 @@ pub(crate) trait RequestHandler {
     fn on_test_spin_rune(&self);
 }
 
+#[derive(Clone, Copy, Debug, Display)]
+pub enum BoundQuadrant {
+    TopLeft,
+    TopRight,
+    BottomRight,
+    BottomLeft,
+}
+
 #[derive(Clone, Debug)]
 pub struct GameState {
     pub position: Option<(i32, i32)>,
@@ -181,6 +190,7 @@ pub struct GameState {
     pub halting: bool,
     pub frame: Option<(Vec<u8>, usize, usize)>,
     pub platforms_bound: Option<Bound>,
+    pub auto_mob_quadrant: Option<BoundQuadrant>,
 }
 
 pub async fn rotate_actions(halting: bool) {

@@ -50,9 +50,6 @@ const AUTO_MOB_IGNORE_XS_SOLIDIFY_COUNT: u32 = 3;
 /// If an auto-mob x position is 5, then the range is [2, 8].
 const AUTO_MOB_IGNORE_XS_RANGE: i32 = 3;
 
-/// The maximum of number points for auto mobbing to periodically move to.
-const AUTO_MOB_MAX_PATHING_POINTS: usize = 3;
-
 /// The acceptable y range above and below the detected mob position when matched
 /// with a reachable y.
 const AUTO_MOB_REACHABLE_Y_THRESHOLD: i32 = 10;
@@ -74,6 +71,25 @@ const UNSTUCK_GAMBA_MODE_COUNT: u32 = 3;
 
 /// The number of samples to store for approximating velocity.
 const VELOCITY_SAMPLES: usize = MOVE_TIMEOUT as usize;
+
+#[derive(Debug, Clone, Copy)]
+pub enum Quadrant {
+    TopLeft,
+    TopRight,
+    BottomRight,
+    BottomLeft,
+}
+
+impl Quadrant {
+    fn next_clockwise(self) -> Quadrant {
+        match self {
+            Quadrant::TopLeft => Quadrant::TopRight,
+            Quadrant::TopRight => Quadrant::BottomRight,
+            Quadrant::BottomRight => Quadrant::BottomLeft,
+            Quadrant::BottomLeft => Quadrant::TopLeft,
+        }
+    }
+}
 
 /// The player previous movement-related contextual state.
 #[derive(Clone, Copy, Eq, PartialEq, Hash, Debug)]
@@ -216,11 +232,7 @@ pub struct PlayerState {
     ///
     /// This will help auto-mobbing ignores positions that are known to be not reachable.
     auto_mob_ignore_xs_map: HashMap<i32, Vec<(Range<i32>, u32)>>,
-    /// Stores points to periodically move to when auto mobbing.
-    ///
-    /// Helps changing location for detecting more mobs. It is populated in terminal state of
-    /// [`Player::UseKey`].
-    auto_mob_pathing_points: Vec<Point>,
+    auto_mob_last_quadrant: Option<Quadrant>,
     /// Tracks whether movement-related actions do not change the player position after a while.
     ///
     /// Resets when a limit is reached (for unstucking) or position did change.
@@ -536,75 +548,104 @@ impl PlayerState {
                 && self.config.rune_platforms_pathing_up_jump_only)
     }
 
-    /// Picks a pathing point in auto mobbing to move to.
+    #[inline]
+    pub fn auto_mob_last_quadrant(&self) -> Option<Quadrant> {
+        self.auto_mob_last_quadrant
+    }
+
+    /// Picks a pathing point in auto mobbing to move to where `bound` is relative to the minimap
+    /// top-left coordinate.
+    ///
+    /// The current implementation chooses a pathing point going clockwise order in the four
+    /// quadrant of `bound`.
     ///
     /// The returned [`Point`] is in player coordinate relative to bottom-left.
     #[inline]
-    pub fn auto_mob_pathing_point(&mut self, context: &Context) -> Option<Point> {
-        let (minimap_width, platforms) = match context.minimap {
-            Minimap::Idle(idle) => (idle.bbox.width, idle.platforms),
+    pub fn auto_mob_pathing_point(&mut self, context: &Context, bound: Rect) -> Point {
+        let bound_width_half = bound.width / 2;
+        let bound_height_half = bound.height / 2;
+        let bound_x_mid = bound.x + bound_width_half;
+        let bound_y_mid = bound.y + bound_height_half;
+
+        let (bbox, platforms) = match context.minimap {
+            Minimap::Idle(idle) => (idle.bbox, idle.platforms),
             _ => unreachable!(),
         };
-        let point = self
-            .auto_mob_pathing_points
-            .iter()
-            .enumerate()
-            .map(|(i, point)| (i, *point))
-            .choose(&mut rand::rng());
-        if let Some((i, _)) = point {
-            self.auto_mob_pathing_points.remove(i);
-        }
-        point.map(|(_, point)| point).or_else(|| {
-            // Flip a coin, use platform as pathing point
-            if !platforms.is_empty() && context.rng.random_bool(0.5) {
-                let platform = platforms[context.rng.random_range(0..platforms.len())];
-                let xs = platform.xs();
-                let y = platform.y();
-                let x = context.rng.random_range(xs.start..xs.end);
-                debug!(target: "player", "auto mob pathing point from platform {x}, {y}");
-                return Some(Point::new(x, y));
+
+        let current_quadrant = if let Some(quadrant) = self.auto_mob_last_quadrant {
+            quadrant
+        } else {
+            // Determine the player current quadrant inside the auto-mobbing bound
+            // Convert current position to top-left coordinate first
+            let pos = self.last_known_pos.expect("inside positional context");
+            let pos = Point::new(pos.x, bbox.height - pos.y);
+            match (pos.x < bound_x_mid, pos.y < bound_y_mid) {
+                (true, true) => Quadrant::TopLeft,
+                (false, true) => Quadrant::TopRight,
+                (false, false) => Quadrant::BottomRight,
+                (true, false) => Quadrant::BottomLeft,
             }
-            // Last resort
-            self.auto_mob_reachable_y_map
-                .keys()
-                .min()
-                .map(|y| Point::new(minimap_width / 2, *y))
-        })
-    }
-
-    /// Populates pathing points for an auto mob action.
-    ///
-    /// After using key state is fully complete, it will try to populate a pathing point to be used
-    /// when [`Rotator`] fails the mob detection. This will will help [`Rotator`] re-uses the previous
-    /// detected mob point for moving to area with more mobs.
-    pub(super) fn auto_mob_populate_pathing_points(&mut self, context: &Context) {
-        if self.auto_mob_pathing_points.len() >= AUTO_MOB_MAX_PATHING_POINTS
-            || self.auto_mob_reachable_y_require_update()
-        {
-            return;
-        }
-
-        // The idea is to pick a pathing point with a different y from existing points and with x
-        // within 70% on both sides from the middle of the minimap
-        let minimap_width = match context.minimap {
-            Minimap::Idle(idle) => idle.bbox.width,
-            _ => unreachable!(),
         };
-        let minimap_mid = minimap_width / 2;
-        let minimap_threshold = (minimap_mid as f32 * 0.7) as i32;
-        let pos = self.last_known_pos.unwrap();
-        let x_offset = (pos.x - minimap_mid).abs();
-        let y = self.auto_mob_reachable_y.unwrap();
-        if x_offset > minimap_threshold
-            || self
-                .auto_mob_pathing_points
-                .iter()
-                .any(|point| point.y == y)
-        {
-            return;
+
+        // Retrieve the next quadrant in clockwise order relative to current
+        let next_quadrant = current_quadrant.next_clockwise();
+        let next_quadrant_bound = match next_quadrant {
+            Quadrant::TopLeft => Rect::new(bound.x, bound.y, bound_width_half, bound_height_half),
+            Quadrant::TopRight => {
+                Rect::new(bound_x_mid, bound.y, bound_width_half, bound_height_half)
+            }
+            Quadrant::BottomRight => Rect::new(
+                bound_x_mid,
+                bound_y_mid,
+                bound_width_half,
+                bound_height_half,
+            ),
+            Quadrant::BottomLeft => {
+                Rect::new(bound.x, bound_y_mid, bound_width_half, bound_height_half)
+            }
+        };
+        self.auto_mob_last_quadrant = Some(next_quadrant);
+
+        let bound_xs = next_quadrant_bound.x..(next_quadrant_bound.x + next_quadrant_bound.width);
+        let bound_ys = next_quadrant_bound.y..(next_quadrant_bound.y + next_quadrant_bound.height);
+
+        // Use a random platform inside the next quadrant bound if any
+        if !platforms.is_empty() {
+            let platform = context
+                .rng
+                .random_choose(platforms.iter().filter(|platform| {
+                    let xs = platform.xs();
+                    let xs_overlap = xs.start < bound_xs.end && bound_xs.start < xs.end;
+                    let y = bbox.height - platform.y();
+                    let y_contained = bound_ys.contains(&y);
+                    xs_overlap && y_contained
+                }));
+            if let Some(platform) = platform {
+                let xs_overlap =
+                    bound_xs.start.max(platform.xs().start)..bound_xs.end.min(platform.xs().end);
+
+                return Point::new(context.rng.random_range(xs_overlap), platform.y());
+            }
         }
-        self.auto_mob_pathing_points.push(Point::new(pos.x, y));
-        debug!(target: "player", "auto mob pathing points {:?}", self.auto_mob_pathing_points);
+
+        let x = context.rng.random_range(bound_xs);
+        let y = context
+            .rng
+            .random_choose(
+                self.auto_mob_reachable_y_map
+                    .iter()
+                    .filter_map(|(y, count)| {
+                        if *count >= AUTO_MOB_REACHABLE_Y_SOLIDIFY_COUNT {
+                            let y_inverted = bbox.height - y;
+                            bound_ys.contains(&y_inverted).then_some(*y)
+                        } else {
+                            None
+                        }
+                    }),
+            )
+            .unwrap_or(bbox.height - context.rng.random_range(bound_ys));
+
+        Point::new(x, y)
     }
 
     /// Whether the auto mob reachable y requires "solidifying".
@@ -1086,8 +1127,14 @@ mod tests {
         context::Context,
         minimap::{Minimap, MinimapIdle},
         pathing::{Platform, find_neighbors},
-        player::{PlayerAction, PlayerActionAutoMob, PlayerState},
+        player::{PlayerAction, PlayerActionAutoMob, PlayerState, Quadrant},
+        rng::Rng,
     };
+
+    const SEED: [u8; 32] = [
+        64, 241, 206, 219, 49, 21, 218, 145, 254, 152, 68, 176, 242, 238, 152, 14, 176, 241, 153,
+        64, 44, 192, 172, 191, 191, 157, 107, 206, 193, 55, 115, 68,
+    ];
 
     #[test]
     fn auto_mob_pick_reachable_y_should_ignore_solidified_x_range() {
@@ -1252,5 +1299,62 @@ mod tests {
         let gaps = map.get(&5).unwrap();
         assert_eq!(gaps.len(), 1);
         assert_eq!(gaps[0].0, (10..100).into());
+    }
+
+    #[test]
+    fn auto_mob_pathing_point_initial_quadrant_rotation() {
+        let mut state = PlayerState {
+            last_known_pos: Some(Point::new(10, 10)), // Bottom-left in minimap rectangle
+            ..Default::default()
+        };
+        let platforms = vec![
+            Platform::new(0..20, 80), // Within top-left quadrant of minimap rectangle
+        ];
+        let bbox = Rect::new(0, 0, 100, 100); // Minimap rectangle
+
+        let mut idle = MinimapIdle::default();
+        idle.platforms = Array::from_iter(find_neighbors(&platforms, 25, 7, 41));
+        idle.bbox = bbox;
+
+        let rng = Rng::new(SEED);
+        let context = Context {
+            minimap: Minimap::Idle(idle),
+            rng,
+            ..Context::new(None, None)
+        };
+
+        let bound = Rect::new(0, 0, 100, 100); // Whole map
+        let point = state.auto_mob_pathing_point(&context, bound);
+
+        assert!(point.x >= 0 && point.x <= 20); // Platform xs
+        assert_eq!(point.y, 80); // Platform y
+        assert_matches!(state.auto_mob_last_quadrant, Some(Quadrant::TopLeft));
+    }
+
+    #[test]
+    fn auto_mob_pathing_point_fallbacks_to_reachable_y_map() {
+        let mut state = PlayerState {
+            auto_mob_last_quadrant: Some(Quadrant::BottomRight),
+            auto_mob_reachable_y_map: HashMap::from([(20, 4)]), // Solidified and in bottom-left
+            ..Default::default()
+        };
+
+        let bbox = Rect::new(0, 0, 100, 100);
+        let mut idle = MinimapIdle::default();
+        idle.bbox = bbox;
+
+        let rng = Rng::new(SEED);
+        let context = Context {
+            minimap: Minimap::Idle(idle),
+            rng,
+            ..Context::new(None, None)
+        };
+
+        let bound = Rect::new(0, 0, 100, 100);
+        let point = state.auto_mob_pathing_point(&context, bound);
+
+        assert_eq!(point.x, 37);
+        assert_eq!(point.y, 20); // 100 - 80
+        assert_matches!(state.auto_mob_last_quadrant, Some(Quadrant::BottomLeft));
     }
 }

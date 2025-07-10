@@ -533,6 +533,7 @@ impl Rotator {
         } else {
             bound.into()
         };
+
         let Update::Ok(points) =
             update_detection_task(context, 0, &mut self.auto_mob_task, move |detector| {
                 detector.detect_mobs(idle.bbox, bound, pos)
@@ -540,7 +541,7 @@ impl Rotator {
         else {
             return;
         };
-        let Some(point) = points
+        let point = points
             .iter()
             .filter(|point| {
                 let y = idle.bbox.height - point.y;
@@ -552,14 +553,12 @@ impl Rotator {
                 debug!(target: "rotator", "auto mob raw position {point:?}");
                 player.auto_mob_pick_reachable_y_position(context, point)
             })
-            .or_else(|| {
-                let point = player.auto_mob_pathing_point(context);
+            .unwrap_or_else(|| {
+                let point = player.auto_mob_pathing_point(context, bound);
                 debug!(target: "rotator", "auto mob use pathing point {point:?}");
                 point
-            })
-        else {
-            return;
-        };
+            });
+
         player.set_normal_action(
             u32::MAX,
             PlayerAction::AutoMob(PlayerActionAutoMob {

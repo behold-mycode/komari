@@ -50,7 +50,7 @@ pub use {
     actions::PlayerActionAutoMob, actions::PlayerActionFamiliarsSwapping, actions::PlayerActionKey,
     actions::PlayerActionMove, actions::PlayerActionPanic, actions::PlayerActionPingPong,
     double_jump::DOUBLE_JUMP_THRESHOLD, grapple::GRAPPLING_MAX_THRESHOLD,
-    grapple::GRAPPLING_THRESHOLD, panic::Panicking, state::PlayerState,
+    grapple::GRAPPLING_THRESHOLD, panic::Panicking, state::PlayerState, state::Quadrant,
 };
 
 /// Minimum y distance from the destination required to perform a jump.
