@@ -614,17 +614,15 @@ impl PlayerState {
                 .random_choose(platforms.iter().filter(|platform| {
                     let xs = platform.xs();
                     let xs_overlap = xs.start < bound_xs.end && bound_xs.start < xs.end;
-                    let y_contained = bound_ys.contains(&platform.y());
+                    let y = bbox.height - platform.y();
+                    let y_contained = bound_ys.contains(&y);
                     xs_overlap && y_contained
                 }));
             if let Some(platform) = platform {
                 let xs_overlap =
                     bound_xs.start.max(platform.xs().start)..bound_xs.end.min(platform.xs().end);
 
-                return Point::new(
-                    context.rng.random_range(xs_overlap),
-                    bbox.height - platform.y(),
-                );
+                return Point::new(context.rng.random_range(xs_overlap), platform.y());
             }
         }
 
