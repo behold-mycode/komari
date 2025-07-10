@@ -71,7 +71,7 @@ const UNSTUCK_GAMBA_MODE_COUNT: u32 = 3;
 /// The number of samples to store for approximating velocity.
 const VELOCITY_SAMPLES: usize = MOVE_TIMEOUT as usize;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Quadrant {
     TopLeft,
     TopRight,
@@ -225,10 +225,6 @@ pub struct PlayerState {
     ///
     /// A y is reachable if there is a platform the player can stand on.
     auto_mob_reachable_y_map: HashMap<i32, u32>,
-    /// The matched reachable y and also the key in [`Self::auto_mob_reachable_y_map`].
-    ///
-    /// TODO: Maybe move this into PlayerAction?
-    auto_mob_reachable_y: Option<i32>,
     /// Tracks a map of reachable y to x ranges that can be ignored.
     ///
     /// This will help auto-mobbing ignores positions that are known to be not reachable.
@@ -406,7 +402,6 @@ impl PlayerState {
         if self.has_priority_action() {
             self.priority_action = None;
         } else {
-            self.auto_mob_reachable_y = None;
             self.normal_action = None;
         }
     }
@@ -661,21 +656,17 @@ impl PlayerState {
 
     /// Whether the auto mob reachable y requires "solidifying".
     #[inline]
-    pub(super) fn auto_mob_reachable_y_require_update(&self) -> bool {
-        self.auto_mob_reachable_y.is_none_or(|y| {
-            *self
-                .auto_mob_reachable_y_map
-                .get(&y)
-                .expect("should be already set")
-                < AUTO_MOB_REACHABLE_Y_SOLIDIFY_COUNT
-        })
+    pub(super) fn auto_mob_reachable_y_require_update(&self, y: i32) -> bool {
+        self.auto_mob_reachable_y_map
+            .get(&y)
+            .copied()
+            .unwrap_or_default()
+            < AUTO_MOB_REACHABLE_Y_SOLIDIFY_COUNT
     }
 
     /// Picks a reachable y position for reaching `mob_pos`.
     ///
-    /// The `mob_pos` must be player coordinate relative to bottom-left. If this function returns
-    /// [`Some`] and this position is used, then [`Self::auto_mob_set_reachable_y`] should be
-    /// called next to keep track of this y.
+    /// The `mob_pos` must be player coordinate relative to bottom-left.
     ///
     /// Returns [`Some`] indicating the new position for the player to reach to mob or
     /// [`None`] indicating this mob position should be dropped.
@@ -721,16 +712,6 @@ impl PlayerState {
         }
     }
 
-    /// Sets the auto-mobbing reachable y previously retrieved
-    /// from [`Self::auto_mob_pick_reachable_y_position`].
-    ///
-    /// This function should be called after the above function if the returned value is [`Some`].
-    pub fn auto_mob_set_reachable_y(&mut self, y: i32) {
-        if self.auto_mob_reachable_y_map.contains_key(&y) {
-            self.auto_mob_reachable_y = Some(y);
-        }
-    }
-
     fn auto_mob_populate_reachable_y(&mut self, context: &Context) {
         match context.minimap {
             Minimap::Idle(idle) => {
@@ -753,20 +734,19 @@ impl PlayerState {
     ///
     /// After [`Self::auto_mob_pick_reachable_y_moving_state`] has been called in the action entry,
     /// this function should be called in the terminal state of the action.
-    pub(super) fn auto_mob_track_reachable_y(&mut self) {
-        // state.last_known_pos is explicitly used instead of state.auto_mob_reachable_y
+    pub(super) fn auto_mob_track_reachable_y(&mut self, y: i32) {
+        // state.last_known_pos is explicitly used instead of y
         // because they might not be the same
         if let Some(pos) = self.last_known_pos {
-            if self.auto_mob_reachable_y.is_some_and(|y| y != pos.y) {
-                let y = self.auto_mob_reachable_y.expect("should already set");
+            if y != pos.y && self.auto_mob_reachable_y_map.contains_key(&y) {
                 let count = self
                     .auto_mob_reachable_y_map
                     .get_mut(&y)
                     .expect("must contain");
+
                 *count = count.saturating_sub(1);
                 if *count == 0 {
                     self.auto_mob_reachable_y_map.remove(&y);
-                    self.auto_mob_reachable_y = None;
                 }
             }
 
@@ -790,21 +770,8 @@ impl PlayerState {
             self.auto_mob_populate_ignore_xs(context);
         }
 
-        let Some(y) = self.auto_mob_reachable_y else {
-            return;
-        };
-        if self
-            .auto_mob_reachable_y_map
-            .get(&y)
-            .copied()
-            .expect("must contain")
-            < AUTO_MOB_REACHABLE_Y_SOLIDIFY_COUNT
-        {
-            return;
-        }
-
-        let x = match self.normal_action.unwrap() {
-            PlayerAction::AutoMob(mob) => mob.position.x,
+        let (x, y) = match self.normal_action.unwrap() {
+            PlayerAction::AutoMob(mob) => (mob.position.x, mob.position.y),
             PlayerAction::FamiliarsSwapping(_)
             | PlayerAction::PingPong(_)
             | PlayerAction::Key(_)
@@ -814,6 +781,10 @@ impl PlayerState {
                 unreachable!()
             }
         };
+        if self.auto_mob_reachable_y_require_update(y) {
+            return;
+        }
+
         let vec = self
             .auto_mob_ignore_xs_map
             .entry(y)
@@ -1224,13 +1195,11 @@ mod tests {
             state.auto_mob_pick_reachable_y_position(&context, mob_pos),
             Some(Point { x: 50, y: 125 })
         );
-        assert_eq!(state.auto_mob_reachable_y, None);
     }
 
     #[test]
     fn auto_mob_track_reachable_y() {
         let mut player = PlayerState {
-            auto_mob_reachable_y: Some(100),
             auto_mob_reachable_y_map: HashMap::from([
                 (100, 1), // Will be decremented and removed
                 (120, 2), // Will be incremented
@@ -1239,14 +1208,12 @@ mod tests {
             ..Default::default()
         };
 
-        player.auto_mob_track_reachable_y();
+        player.auto_mob_track_reachable_y(100);
 
         // The old reachable y (100) should be removed
         assert!(!player.auto_mob_reachable_y_map.contains_key(&100));
         // The current position y (120) should be incremented
         assert_eq!(player.auto_mob_reachable_y_map.get(&120), Some(&3));
-        // auto_mob_reachable_y should be cleared
-        assert_eq!(player.auto_mob_reachable_y, None);
     }
 
     #[test]
@@ -1262,7 +1229,6 @@ mod tests {
                 },
                 ..Default::default()
             })),
-            auto_mob_reachable_y: Some(y),
             auto_mob_reachable_y_map: HashMap::from([(y, 4)]), // 4 = solidify
             auto_mob_ignore_xs_map: HashMap::from([(
                 y,

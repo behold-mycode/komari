@@ -4,7 +4,7 @@ use opencv::core::Point;
 use platforms::windows::KeyKind;
 
 use super::{
-    PingPongDirection, PlayerState, Timeout,
+    PingPongDirection, PlayerActionAutoMob, PlayerState, Timeout,
     actions::{
         PlayerAction, PlayerActionKey, PlayerActionPingPong, on_ping_pong_double_jump_action,
     },
@@ -12,7 +12,7 @@ use super::{
     timeout::{Lifecycle, next_timeout_lifecycle},
 };
 use crate::{
-    ActionKeyDirection, ActionKeyWith, Class, KeyBinding, LinkKeyBinding,
+    ActionKeyDirection, ActionKeyWith, Class, KeyBinding, LinkKeyBinding, Position,
     context::Context,
     player::{LastMovement, MOVE_TIMEOUT, Moving, Player, on_action_state_mut},
 };
@@ -331,11 +331,14 @@ pub fn update_use_key_context(
     on_action_state_mut(
         state,
         |state, action| match action {
-            PlayerAction::AutoMob(_) => {
+            PlayerAction::AutoMob(PlayerActionAutoMob {
+                position: Position { y, .. },
+                ..
+            }) => {
                 let is_terminal = matches!(next, Player::Idle);
                 if is_terminal {
                     state.auto_mob_track_ignore_xs(context, false);
-                    if state.auto_mob_reachable_y_require_update() {
+                    if state.auto_mob_reachable_y_require_update(y) {
                         return Some((Player::Stalling(Timeout::default(), MOVE_TIMEOUT), false));
                     }
                 }

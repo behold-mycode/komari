@@ -21,13 +21,14 @@ use crate::{
     player::{
         GRAPPLING_MAX_THRESHOLD, PanicTo, PingPongDirection, Player, PlayerAction,
         PlayerActionAutoMob, PlayerActionFamiliarsSwapping, PlayerActionKey, PlayerActionPanic,
-        PlayerActionPingPong, PlayerState,
+        PlayerActionPingPong, PlayerState, Quadrant,
     },
     skill::{Skill, SkillKind},
     task::{Task, Update, update_detection_task},
 };
 
 const COOLDOWN_BETWEEN_QUEUE_MILLIS: u128 = 20_000;
+const AUTO_MOB_SAME_QUAD_THRESHOLD: u32 = 4;
 
 /// [`Condition`] evaluation result.
 enum ConditionResult {
@@ -125,6 +126,11 @@ pub struct Rotator {
     normal_rotate_mode: RotatorMode,
     /// The [`Task`] used when [`Self::normal_rotate_mode`] is [`RotatorMode::AutoMobbing`]
     auto_mob_task: Option<Task<Result<Vec<Point>>>>,
+    /// Tracks number of times a mob detection has been completed inside the same quad.
+    ///
+    /// This limits the number of detections can be done inside the same quad as to help player
+    /// advances to the next quad.
+    auto_mob_quadrant_consecutive_count: Option<(Quadrant, u32)>,
     priority_actions: OrderedHashMap<u32, PriorityAction>,
     /// The currently executing [`RotatorAction::Linked`] action
     priority_queuing_linked_action: Option<(u32, Box<LinkedAction>)>,
@@ -274,6 +280,7 @@ impl Rotator {
         self.reset_normal_actions_queue();
         self.priority_actions_queue.clear();
         self.priority_queuing_linked_action = None;
+        self.auto_mob_quadrant_consecutive_count = None;
     }
 
     #[inline]
@@ -554,17 +561,49 @@ impl Rotator {
                 point.and_then(|point| player.auto_mob_pick_reachable_y_position(context, point))
             })
             .collect::<Vec<_>>();
-        let point = context
-            .rng
-            .random_choose(points.into_iter())
-            .inspect(|point| {
-                player.auto_mob_set_reachable_y(point.y);
-            })
-            .unwrap_or_else(|| {
-                let point = player.auto_mob_pathing_point(context, bound);
-                debug!(target: "rotator", "auto mob use pathing point {point:?}");
-                point
-            });
+        let mut use_pathing_point = false;
+
+        if let Some(last_quad) = player.auto_mob_last_quadrant()
+            && !points.is_empty()
+        {
+            if self
+                .auto_mob_quadrant_consecutive_count
+                .is_none_or(|(quad, _)| quad != last_quad)
+            {
+                self.auto_mob_quadrant_consecutive_count = Some((last_quad, 0));
+            }
+            let (_, count) = self
+                .auto_mob_quadrant_consecutive_count
+                .as_mut()
+                .expect("is some");
+
+            *count += 1;
+            if *count >= AUTO_MOB_SAME_QUAD_THRESHOLD {
+                *count = 0;
+                use_pathing_point = true;
+            }
+        }
+
+        let point = if use_pathing_point {
+            player.auto_mob_pathing_point(context, bound)
+        } else {
+            context
+                .rng
+                .random_choose(points.into_iter())
+                .unwrap_or_else(|| player.auto_mob_pathing_point(context, bound))
+        };
+        let wait_before_ticks = (key.wait_before_millis / MS_PER_TICK) as u32;
+        let wait_before_ticks_random_range =
+            (key.wait_before_millis_random_range / MS_PER_TICK) as u32;
+        let wait_after_ticks = (key.wait_after_millis / MS_PER_TICK) as u32;
+        let wait_after_ticks_random_range =
+            (key.wait_after_millis_random_range / MS_PER_TICK) as u32;
+        let position = Position {
+            x: point.x,
+            x_random_range: 0,
+            y: point.y,
+            allow_adjusting: false,
+        };
 
         player.set_normal_action(
             u32::MAX,
@@ -573,18 +612,11 @@ impl Rotator {
                 link_key: key.link_key,
                 count: key.count.max(1),
                 with: key.with,
-                wait_before_ticks: (key.wait_before_millis / MS_PER_TICK) as u32,
-                wait_before_ticks_random_range: (key.wait_before_millis_random_range / MS_PER_TICK)
-                    as u32,
-                wait_after_ticks: (key.wait_after_millis / MS_PER_TICK) as u32,
-                wait_after_ticks_random_range: (key.wait_after_millis_random_range / MS_PER_TICK)
-                    as u32,
-                position: Position {
-                    x: point.x,
-                    x_random_range: 0,
-                    y: point.y,
-                    allow_adjusting: false,
-                },
+                wait_before_ticks,
+                wait_before_ticks_random_range,
+                wait_after_ticks,
+                wait_after_ticks_random_range,
+                position,
             }),
         );
     }

@@ -1,8 +1,9 @@
 use super::{
-    Player, PlayerAction, PlayerState,
+    Player, PlayerAction, PlayerActionAutoMob, PlayerState,
     actions::on_action_state_mut,
     timeout::{Lifecycle, Timeout, next_timeout_lifecycle},
 };
+use crate::Position;
 
 /// Updates the [`Player::Stalling`] contextual state
 ///
@@ -28,13 +29,16 @@ pub fn update_stalling_context(
     on_action_state_mut(
         state,
         |state, action| match action {
-            PlayerAction::AutoMob(_) => {
+            PlayerAction::AutoMob(PlayerActionAutoMob {
+                position: Position { y, .. },
+                ..
+            }) => {
                 let is_terminal = matches!(next, Player::Idle);
-                if is_terminal && state.auto_mob_reachable_y_require_update() {
+                if is_terminal && state.auto_mob_reachable_y_require_update(y) {
                     if !state.is_stationary {
                         return Some((Player::Stalling(Timeout::default(), max_timeout), false));
                     }
-                    state.auto_mob_track_reachable_y();
+                    state.auto_mob_track_reachable_y(y);
                 }
                 Some((next, is_terminal))
             }
