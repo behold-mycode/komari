@@ -4,7 +4,6 @@ use anyhow::Result;
 use log::debug;
 use opencv::core::{Point, Rect};
 use platforms::windows::KeyKind;
-use rand::seq::IteratorRandom;
 
 use super::{
     DOUBLE_JUMP_THRESHOLD, JUMP_THRESHOLD, MOVE_TIMEOUT, Player, PlayerAction,
@@ -227,12 +226,17 @@ pub struct PlayerState {
     /// A y is reachable if there is a platform the player can stand on.
     auto_mob_reachable_y_map: HashMap<i32, u32>,
     /// The matched reachable y and also the key in [`Self::auto_mob_reachable_y_map`].
+    ///
+    /// TODO: Maybe move this into PlayerAction?
     auto_mob_reachable_y: Option<i32>,
     /// Tracks a map of reachable y to x ranges that can be ignored.
     ///
     /// This will help auto-mobbing ignores positions that are known to be not reachable.
     auto_mob_ignore_xs_map: HashMap<i32, Vec<(Range<i32>, u32)>>,
+    /// The last auto-mobbing quadrant kind.
     auto_mob_last_quadrant: Option<Quadrant>,
+    /// The last auto-mobbing bound's quadrant relative to bottom-left player coordinate.
+    auto_mob_last_quadrant_bound: Option<Rect>,
     /// Tracks whether movement-related actions do not change the player position after a while.
     ///
     /// Resets when a limit is reached (for unstucking) or position did change.
@@ -604,7 +608,14 @@ impl PlayerState {
                 Rect::new(bound.x, bound_y_mid, bound_width_half, bound_height_half)
             }
         };
+
         self.auto_mob_last_quadrant = Some(next_quadrant);
+        self.auto_mob_last_quadrant_bound = Some(Rect::new(
+            next_quadrant_bound.x,
+            bbox.height - next_quadrant_bound.br().y,
+            next_quadrant_bound.width,
+            next_quadrant_bound.height,
+        ));
 
         let bound_xs = next_quadrant_bound.x..(next_quadrant_bound.x + next_quadrant_bound.width);
         let bound_ys = next_quadrant_bound.y..(next_quadrant_bound.y + next_quadrant_bound.height);
@@ -658,7 +669,9 @@ impl PlayerState {
 
     /// Picks a reachable y position for reaching `mob_pos`.
     ///
-    /// The `mob_pos` must be player coordinate relative to bottom-left.
+    /// The `mob_pos` must be player coordinate relative to bottom-left. If this function returns
+    /// [`Some`] and this position is used, then [`Self::auto_mob_set_reachable_y`] should be
+    /// called next to keep track of this y.
     ///
     /// Returns [`Some`] indicating the new position for the player to reach to mob or
     /// [`None`] indicating this mob position should be dropped.
@@ -677,7 +690,7 @@ impl PlayerState {
             .keys()
             .copied()
             .filter(|y| (mob_pos.y - y).abs() <= AUTO_MOB_REACHABLE_Y_THRESHOLD);
-        let y = ys.choose(&mut rand::rng());
+        let y = context.rng.random_choose(ys);
 
         // Checking whether y is solidified yet is not needed because y will only be added
         // to the xs map when it is solidified. As for populated xs from platforms, the
@@ -693,10 +706,23 @@ impl PlayerState {
             return None;
         }
 
-        self.auto_mob_reachable_y = y;
-        debug!(target: "player", "auto mob reachable y {:?} {:?}", y, self.auto_mob_reachable_y_map);
+        let mob_pos = Point::new(mob_pos.x, y.unwrap_or(mob_pos.y));
+        if self
+            .auto_mob_last_quadrant_bound
+            .is_some_and(|bound| !bound.contains(mob_pos))
+        {
+            None
+        } else {
+            Some(mob_pos)
+        }
+    }
 
-        Some(Point::new(mob_pos.x, y.unwrap_or(mob_pos.y)))
+    /// Sets the auto-mobbing reachable y previously retrieved
+    /// from [`Self::auto_mob_pick_reachable_y_position`].
+    ///
+    /// This function should be called after the above function if the returned value is [`Some`].
+    pub fn auto_mob_set_reachable_y(&mut self, y: i32) {
+        self.auto_mob_reachable_y = Some(y);
     }
 
     fn auto_mob_populate_reachable_y(&mut self, context: &Context) {
@@ -758,7 +784,13 @@ impl PlayerState {
         let Some(y) = self.auto_mob_reachable_y else {
             return;
         };
-        if *self.auto_mob_reachable_y_map.get(&y).unwrap() < AUTO_MOB_REACHABLE_Y_SOLIDIFY_COUNT {
+        if self
+            .auto_mob_reachable_y_map
+            .get(&y)
+            .copied()
+            .unwrap_or_default()
+            < AUTO_MOB_REACHABLE_Y_SOLIDIFY_COUNT
+        {
             return;
         }
 
@@ -1166,7 +1198,6 @@ mod tests {
             state.auto_mob_pick_reachable_y_position(&context, mob_pos),
             Some(Point { x: 50, y: 120 })
         );
-        assert_eq!(state.auto_mob_reachable_y, Some(120));
     }
 
     #[test]

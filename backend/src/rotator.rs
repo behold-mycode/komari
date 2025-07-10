@@ -9,7 +9,6 @@ use anyhow::Result;
 use log::debug;
 use opencv::core::{Point, Rect};
 use ordered_hash_map::OrderedHashMap;
-use rand::seq::IteratorRandom;
 
 use crate::{
     ActionKeyDirection, ActionKeyWith, Bound, FamiliarRarity, KeyBinding, MobbingKey, Position,
@@ -20,9 +19,9 @@ use crate::{
     database::{Action, ActionCondition, ActionKey, ActionMove, EliteBossBehavior},
     minimap::Minimap,
     player::{
-        GRAPPLING_THRESHOLD, PanicTo, PingPongDirection, Player, PlayerAction, PlayerActionAutoMob,
-        PlayerActionFamiliarsSwapping, PlayerActionKey, PlayerActionPanic, PlayerActionPingPong,
-        PlayerState,
+        GRAPPLING_MAX_THRESHOLD, PanicTo, PingPongDirection, Player, PlayerAction,
+        PlayerActionAutoMob, PlayerActionFamiliarsSwapping, PlayerActionKey, PlayerActionPanic,
+        PlayerActionPingPong, PlayerState,
     },
     skill::{Skill, SkillKind},
     task::{Task, Update, update_detection_task},
@@ -541,17 +540,25 @@ impl Rotator {
         else {
             return;
         };
-        let point = points
+        // FIXME: Collect to a Vec first because `context.rng` needs to be borrowed again.
+        let points = points
             .iter()
-            .filter(|point| {
+            .filter_map(|point| {
                 let y = idle.bbox.height - point.y;
-                y <= pos.y || (y - pos.y).abs() <= GRAPPLING_THRESHOLD
-            })
-            .choose(&mut rand::rng())
-            .map(|point| Point::new(point.x, idle.bbox.height - point.y))
-            .and_then(|point| {
+                let point = if y <= pos.y || (y - pos.y).abs() <= GRAPPLING_MAX_THRESHOLD {
+                    Some(Point::new(point.x, y))
+                } else {
+                    None
+                };
                 debug!(target: "rotator", "auto mob raw position {point:?}");
-                player.auto_mob_pick_reachable_y_position(context, point)
+                point.and_then(|point| player.auto_mob_pick_reachable_y_position(context, point))
+            })
+            .collect::<Vec<_>>();
+        let point = context
+            .rng
+            .random_choose(points.into_iter())
+            .inspect(|point| {
+                player.auto_mob_set_reachable_y(point.y);
             })
             .unwrap_or_else(|| {
                 let point = player.auto_mob_pathing_point(context, bound);
