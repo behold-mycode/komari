@@ -784,7 +784,13 @@ impl PlayerState {
         let Some(y) = self.auto_mob_reachable_y else {
             return;
         };
-        if *self.auto_mob_reachable_y_map.get(&y).unwrap() < AUTO_MOB_REACHABLE_Y_SOLIDIFY_COUNT {
+        if self
+            .auto_mob_reachable_y_map
+            .get(&y)
+            .copied()
+            .unwrap_or_default()
+            < AUTO_MOB_REACHABLE_Y_SOLIDIFY_COUNT
+        {
             return;
         }
 

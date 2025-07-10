@@ -540,10 +540,10 @@ impl Rotator {
         else {
             return;
         };
-
-        let point = context
-            .rng
-            .random_choose(points.iter().filter_map(|point| {
+        // FIXME: Collect to a Vec first because `context.rng` needs to be borrowed again.
+        let points = points
+            .iter()
+            .filter_map(|point| {
                 let y = idle.bbox.height - point.y;
                 let point = if y <= pos.y || (y - pos.y).abs() <= GRAPPLING_MAX_THRESHOLD {
                     Some(Point::new(point.x, y))
@@ -552,7 +552,11 @@ impl Rotator {
                 };
                 debug!(target: "rotator", "auto mob raw position {point:?}");
                 point.and_then(|point| player.auto_mob_pick_reachable_y_position(context, point))
-            }))
+            })
+            .collect::<Vec<_>>();
+        let point = context
+            .rng
+            .random_choose(points.into_iter())
             .inspect(|point| {
                 player.auto_mob_set_reachable_y(point.y);
             })
