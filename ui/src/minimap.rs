@@ -1,4 +1,4 @@
-use std::{fs::File, io::BufReader, time::Duration};
+use std::{fs::File, io::BufReader, ops::Deref, time::Duration};
 
 use backend::{
     Action, ActionKey, ActionMove, Minimap as MinimapData, Position, RotationMode, create_minimap,
@@ -437,20 +437,25 @@ fn Canvas(
     position: Signal<(i32, i32)>,
 ) -> Element {
     let mut platforms_bound = use_signal(|| None);
-
-    use_effect(move || {
+    let rotation_bound_and_type = use_memo(move || {
         let platforms_bound = platforms_bound();
-        let preset = minimap_preset();
-        let Some(minimap) = minimap() else {
-            return;
-        };
-        let bound_and_type = match minimap.rotation_mode {
+        let minimap = minimap()?;
+
+        match minimap.rotation_mode {
             RotationMode::StartToEnd | RotationMode::StartToEndThenReverse => None,
             RotationMode::AutoMobbing => Some((
                 platforms_bound.unwrap_or(minimap.rotation_auto_mob_bound),
                 "AutoMobbing",
             )),
             RotationMode::PingPong => Some((minimap.rotation_ping_pong_bound, "PingPong")),
+        }
+    });
+
+    use_effect(move || {
+        let bound_and_type = rotation_bound_and_type();
+        let preset = minimap_preset();
+        let Some(minimap) = minimap() else {
+            return;
         };
         let actions = preset
             .and_then(|preset| minimap.actions.get(&preset).cloned())
@@ -520,6 +525,10 @@ fn Canvas(
             state.set(Some(current_state));
             sleep(Duration::from_millis(50)).await;
 
+            let bound = rotation_bound_and_type
+                .peek()
+                .deref()
+                .map(|(bound, _)| bound);
             let Some((frame, width, height)) = frame else {
                 continue;
             };
