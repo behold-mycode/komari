@@ -377,8 +377,8 @@ fn ranges_overlap<R: Into<Range<i32>>>(first: R, second: R) -> bool {
     fn inner(first: Range<i32>, second: Range<i32>) -> bool {
         !first.is_empty()
             && !second.is_empty()
-            && ((first.start < second.end && first.start >= second.start)
-                || (second.start < first.end && second.start >= first.start))
+            && first.start < second.end
+            && second.start < first.end
     }
     inner(first.into(), second.into())
 }

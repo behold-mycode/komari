@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 
 use noise::{NoiseFn, Perlin};
-use rand::{Rng as RandRng, SeedableRng, rngs::StdRng};
+use rand::{Rng as RandRng, SeedableRng, rngs::StdRng, seq::IteratorRandom};
 use rand_distr::{
     Distribution, Normal,
     uniform::{SampleRange, SampleUniform},
@@ -60,6 +60,11 @@ impl Rng {
         R: SampleRange<T>,
     {
         self.inner.borrow_mut().random_range(range)
+    }
+
+    #[inline]
+    pub fn random_choose<T: IteratorRandom>(&self, iter: T) -> Option<T::Item> {
+        iter.choose(&mut self.inner.borrow_mut())
     }
 
     /// Samples a random `(delay, tick count)` pair.
