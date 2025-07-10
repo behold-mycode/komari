@@ -4,7 +4,6 @@ use anyhow::Result;
 use log::debug;
 use opencv::core::{Point, Rect};
 use platforms::windows::KeyKind;
-use rand::seq::IteratorRandom;
 
 use super::{
     DOUBLE_JUMP_THRESHOLD, JUMP_THRESHOLD, MOVE_TIMEOUT, Player, PlayerAction,
@@ -691,7 +690,7 @@ impl PlayerState {
             .keys()
             .copied()
             .filter(|y| (mob_pos.y - y).abs() <= AUTO_MOB_REACHABLE_Y_THRESHOLD);
-        let y = ys.choose(&mut rand::rng());
+        let y = context.rng.random_choose(ys);
 
         // Checking whether y is solidified yet is not needed because y will only be added
         // to the xs map when it is solidified. As for populated xs from platforms, the
