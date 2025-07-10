@@ -164,6 +164,21 @@ Auto-mobbing is feature to hit random mobs detected on screen. It can be enabled
   - Try to detect "gaps" between platforms to ignore invalid mob positions
   - Note that it is only encouraged and not neccessary to add platforms when using auto-mobbing
 
+(From v0.18.0)
+Auto-mobbing now follows a fixed clockwise order based on the provided bound like the below image. This has improved
+auto-mobbing mob count even in larger maps. Previously, auto-mobbing suffers from too much randomness and unable to move
+around much in larger maps.
+
+How it works:
+1. The bound is divided into four quads
+2. The player will move to each of this quad in a clockwise order
+3. The player will only detect and hit mobs inside each of this quad (outside of this quad is ignored)
+4. If there is no more mob, move to the next quad
+
+Red arrow's tail indicates current quad and its head indicates the next quad to move to.
+
+![Auto-mobbing](https://github.com/sasanquaa/komari/blob/master/.github/images/automobbing.png?raw=true)
+
 ##### Ping Pong
 Added in v0.12:
 - All added normal actions are ignored but still possible to use other priority actions similar to `AutoMobbing`
