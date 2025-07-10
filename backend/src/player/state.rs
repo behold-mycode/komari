@@ -663,7 +663,11 @@ impl PlayerState {
     #[inline]
     pub(super) fn auto_mob_reachable_y_require_update(&self) -> bool {
         self.auto_mob_reachable_y.is_none_or(|y| {
-            *self.auto_mob_reachable_y_map.get(&y).unwrap() < AUTO_MOB_REACHABLE_Y_SOLIDIFY_COUNT
+            *self
+                .auto_mob_reachable_y_map
+                .get(&y)
+                .expect("should be already set")
+                < AUTO_MOB_REACHABLE_Y_SOLIDIFY_COUNT
         })
     }
 
@@ -722,7 +726,9 @@ impl PlayerState {
     ///
     /// This function should be called after the above function if the returned value is [`Some`].
     pub fn auto_mob_set_reachable_y(&mut self, y: i32) {
-        self.auto_mob_reachable_y = Some(y);
+        if self.auto_mob_reachable_y_map.contains_key(&y) {
+            self.auto_mob_reachable_y = Some(y);
+        }
     }
 
     fn auto_mob_populate_reachable_y(&mut self, context: &Context) {
@@ -752,8 +758,11 @@ impl PlayerState {
         // because they might not be the same
         if let Some(pos) = self.last_known_pos {
             if self.auto_mob_reachable_y.is_some_and(|y| y != pos.y) {
-                let y = self.auto_mob_reachable_y.unwrap();
-                let count = self.auto_mob_reachable_y_map.get_mut(&y).unwrap();
+                let y = self.auto_mob_reachable_y.expect("should already set");
+                let count = self
+                    .auto_mob_reachable_y_map
+                    .get_mut(&y)
+                    .expect("must contain");
                 *count = count.saturating_sub(1);
                 if *count == 0 {
                     self.auto_mob_reachable_y_map.remove(&y);
@@ -788,7 +797,7 @@ impl PlayerState {
             .auto_mob_reachable_y_map
             .get(&y)
             .copied()
-            .unwrap_or_default()
+            .expect("must contain")
             < AUTO_MOB_REACHABLE_Y_SOLIDIFY_COUNT
         {
             return;
