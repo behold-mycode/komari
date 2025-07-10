@@ -52,6 +52,7 @@ fn main() {
     let spin_test = dir.join("spin_test_2");
     let familiar_button_save = dir.join("familiar_button_save_ideal_ratio.png");
     let familiar_button_setup = dir.join("familiar_button_setup_ideal_ratio.png");
+    let familiar_button_level = dir.join("familiar_button_level_ideal_ratio.png");
     let familiar_slot_free = dir.join("familiar_slot_free_ideal_ratio.png");
     let familiar_slot_occupied = dir.join("familiar_slot_occupied_ideal_ratio.png");
     let familiar_slot_occupied_mask = dir.join("familiar_slot_occupied_mask_ideal_ratio.png");
@@ -264,6 +265,10 @@ fn main() {
     println!(
         "cargo:rustc-env=FAMILIAR_BUTTON_SETUP_TEMPLATE={}",
         familiar_button_setup.to_str().unwrap()
+    );
+    println!(
+        "cargo:rustc-env=FAMILIAR_BUTTON_LEVEL_TEMPLATE={}",
+        familiar_button_level.to_str().unwrap()
     );
     println!(
         "cargo:rustc-env=FAMILIAR_SLOT_FREE_TEMPLATE={}",

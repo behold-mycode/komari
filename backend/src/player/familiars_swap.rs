@@ -309,8 +309,15 @@ fn update_free_slots(
     #[inline]
     fn find_cards_or_complete(context: &Context, swapping: FamiliarsSwapping) -> FamiliarsSwapping {
         if swapping.slots.iter().any(|slot| slot.1) {
-            let rest = swapping.mouse_rest;
-            let _ = context.keys.send_mouse(rest.x, rest.y, MouseAction::Move);
+            if let Ok(bbox) = context.detector_unwrap().detect_familiar_level_button() {
+                // Optionally sort the familiar cards first so that the lowest-level one are on top
+                // by clicking level button
+                let (x, y) = bbox_click_point(bbox);
+                let _ = context.keys.send_mouse(x, y, MouseAction::Click);
+            } else {
+                let rest = swapping.mouse_rest;
+                let _ = context.keys.send_mouse(rest.x, rest.y, MouseAction::Move);
+            }
             swapping.stage(SwappingStage::FindCards)
         } else {
             swapping.stage_completing(Timeout::default(), false)
@@ -445,7 +452,7 @@ fn update_find_cards(context: &Context, mut swapping: FamiliarsSwapping) -> Fami
     }
 
     if swapping.cards.is_empty() {
-        // Try scroll
+        // Try scroll even if it is empty
         swapping.stage_scrolling(Timeout::default(), None, 0)
     } else {
         swapping.stage_swapping(Timeout::default(), 0)
@@ -491,9 +498,9 @@ fn update_swapping(
             }
         }
         Lifecycle::Updated(timeout) => {
-            let rest = swapping.mouse_rest;
-
             if timeout.current == SWAPPING_DETECT_LEVEL_TICK {
+                let rest = swapping.mouse_rest;
+
                 match context.detector_unwrap().detect_familiar_hover_level() {
                     Ok(FamiliarLevel::Level5) => {
                         // Move to rest position and wait for timeout
@@ -665,6 +672,7 @@ mod tests {
     use std::assert_matches::assert_matches;
 
     use anyhow::Ok;
+    use mockall::predicate::{eq, function};
 
     use super::*;
     use crate::{array::Array, bridge::MockKeySender, detect::MockDetector};
@@ -683,9 +691,22 @@ mod tests {
 
     #[test]
     fn update_free_slots_move_to_find_cards() {
+        let bbox = Rect::new(10, 10, 10, 10);
+        let mut detector = MockDetector::default();
+        detector
+            .expect_detect_familiar_level_button()
+            .once()
+            .returning(move || Ok(bbox));
         let mut keys = MockKeySender::default();
-        keys.expect_send_mouse().once().returning(|_, _, _| Ok(()));
-        let context = Context::new(Some(keys), None);
+        keys.expect_send_mouse()
+            .with(
+                eq(15),
+                eq(15),
+                function(|action| matches!(action, MouseAction::Click)),
+            )
+            .once()
+            .returning(|_, _, _| Ok(()));
+        let context = Context::new(Some(keys), Some(detector));
 
         let mut swapping = FamiliarsSwapping::new(SwappableFamiliars::All, Array::new());
         let bbox = Default::default();

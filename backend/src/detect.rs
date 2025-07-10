@@ -186,6 +186,9 @@ pub trait Detector: 'static + Send + DynClone + Debug {
     /// Detects familiar menu setup button.
     fn detect_familiar_setup_button(&self) -> Result<Rect>;
 
+    /// Detects familiar menu level button.
+    fn detect_familiar_level_button(&self) -> Result<Rect>;
+
     /// Detects the familiar slots assuming the familiar menu opened.
     ///
     /// Returns a pair of `(Rect, bool)` with `bool` of `true` indicating the slot is free.
@@ -242,6 +245,7 @@ mock! {
         fn detect_erda_shower(&self) -> Result<Rect>;
         fn detect_familiar_save_button(&self) -> Result<Rect>;
         fn detect_familiar_setup_button(&self) -> Result<Rect>;
+        fn detect_familiar_level_button(&self) -> Result<Rect>;
         fn detect_familiar_slots(&self) -> Vec<(Rect, bool)>;
         fn detect_familiar_slot_is_free(&self, slot: Rect) -> bool;
         fn detect_familiar_hover_level(&self) -> Result<FamiliarLevel>;
@@ -398,6 +402,10 @@ impl Detector for CachedDetector {
 
     fn detect_familiar_setup_button(&self) -> Result<Rect> {
         detect_familiar_setup_button(&to_bgr(&*self.mat))
+    }
+
+    fn detect_familiar_level_button(&self) -> Result<Rect> {
+        detect_familiar_level_button(&to_bgr(&*self.mat))
     }
 
     fn detect_familiar_slots(&self) -> Vec<(Rect, bool)> {
@@ -1711,6 +1719,18 @@ fn detect_familiar_setup_button(mat: &impl ToInputArray) -> Result<Rect> {
     static TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {
         imgcodecs::imdecode(
             include_bytes!(env!("FAMILIAR_BUTTON_SETUP_TEMPLATE")),
+            IMREAD_COLOR,
+        )
+        .unwrap()
+    });
+
+    detect_template(mat, &*TEMPLATE, Point::default(), 0.75)
+}
+
+fn detect_familiar_level_button(mat: &impl ToInputArray) -> Result<Rect> {
+    static TEMPLATE: LazyLock<Mat> = LazyLock::new(|| {
+        imgcodecs::imdecode(
+            include_bytes!(env!("FAMILIAR_BUTTON_LEVEL_TEMPLATE")),
             IMREAD_COLOR,
         )
         .unwrap()
