@@ -551,9 +551,11 @@ impl Rotator {
                     None
                 };
                 debug!(target: "rotator", "auto mob raw position {point:?}");
-
                 point.and_then(|point| player.auto_mob_pick_reachable_y_position(context, point))
             }))
+            .inspect(|point| {
+                player.auto_mob_set_reachable_y(point.y);
+            })
             .unwrap_or_else(|| {
                 let point = player.auto_mob_pathing_point(context, bound);
                 debug!(target: "rotator", "auto mob use pathing point {point:?}");

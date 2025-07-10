@@ -227,6 +227,8 @@ pub struct PlayerState {
     /// A y is reachable if there is a platform the player can stand on.
     auto_mob_reachable_y_map: HashMap<i32, u32>,
     /// The matched reachable y and also the key in [`Self::auto_mob_reachable_y_map`].
+    ///
+    /// TODO: Maybe move this into PlayerAction?
     auto_mob_reachable_y: Option<i32>,
     /// Tracks a map of reachable y to x ranges that can be ignored.
     ///
@@ -668,7 +670,9 @@ impl PlayerState {
 
     /// Picks a reachable y position for reaching `mob_pos`.
     ///
-    /// The `mob_pos` must be player coordinate relative to bottom-left.
+    /// The `mob_pos` must be player coordinate relative to bottom-left. If this function returns
+    /// [`Some`] and this position is used, then [`Self::auto_mob_set_reachable_y`] should be
+    /// called next to keep track of this y.
     ///
     /// Returns [`Some`] indicating the new position for the player to reach to mob or
     /// [`None`] indicating this mob position should be dropped.
@@ -1189,7 +1193,6 @@ mod tests {
             state.auto_mob_pick_reachable_y_position(&context, mob_pos),
             Some(Point { x: 50, y: 120 })
         );
-        assert_eq!(state.auto_mob_reachable_y, Some(120));
     }
 
     #[test]
