@@ -25,26 +25,15 @@ const BACKGROUND: Asset = asset!(
 const MINIMAP_JS: &str = r#"
     const canvas = document.getElementById("canvas-minimap");
     const canvasCtx = canvas.getContext("2d");
-    let lastWidth = canvas.width;
-    let lastHeight = canvas.height;
 
     while (true) {
-        const [buffer, width, height, destinations] = await dioxus.recv();
+        const [buffer, width, height, destinations, bound, quadrant] = await dioxus.recv();
         const data = new ImageData(new Uint8ClampedArray(buffer), width, height);
         const bitmap = await createImageBitmap(data);
 
-        if (lastWidth != width || lastHeight != height) {
-            lastWidth = width;
-            lastHeight = height;
-            canvas.width = width;
-            canvas.height = height;
-        }
-
-        canvasCtx.beginPath()
-        canvasCtx.setLineDash([8]);
         canvasCtx.fillStyle = "rgb(128, 255, 204)";
         canvasCtx.strokeStyle = "rgb(128, 255, 204)";
-        canvasCtx.drawImage(bitmap, 0, 0);
+        canvasCtx.drawImage(bitmap, 0, 0, width, height, 0, 0, canvas.width, canvas.height);
 
         let prevX = 0;
         let prevY = 0;
@@ -53,17 +42,87 @@ const MINIMAP_JS: &str = r#"
             x = (x / width) * canvas.width;
             y = ((height - y) / height) * canvas.height;
 
-            canvasCtx.fillRect(x, y, 2, 2);
+            canvasCtx.fillRect(x, y, 4, 4);
 
             if (i > 0) {
-                canvasCtx.moveTo(prevX, prevY);
-                canvasCtx.lineTo(x, y);
+                canvasCtx.beginPath();
+                canvasCtx.setLineDash([8]);
+                canvasCtx.moveTo(prevX + 2, prevY + 2);
+                canvasCtx.lineTo(x + 2, y + 2);
                 canvasCtx.stroke();
             }
 
             prevX = x;
             prevY = y;
         }
+
+        if (quadrant !== null && bound !== null) {
+            canvasCtx.strokeStyle = "rgb(254, 71, 57)";
+
+            const x = (bound.x / width) * canvas.width;
+            const y = (bound.y / height) * canvas.height;
+            const w = (bound.width / width) * canvas.width;
+            const h = (bound.height / height) * canvas.height;
+
+            const widthHalf = w / 2;
+            const heightHalf = h / 2;
+            const widthQuarter = widthHalf / 2;
+            const heightQuarter = heightHalf / 2;
+
+            switch (quadrant) {
+                case "TopLeft": {
+                    const fromX = x + widthQuarter;
+                    const fromY = y + heightQuarter;
+                    const toX = x + widthHalf + widthQuarter;
+                    drawArrow(canvasCtx, fromX, fromY, toX, fromY);
+                    break;
+                }
+                case "TopRight": {
+                    const fromX = x + widthHalf + widthQuarter;
+                    const fromY = y + heightQuarter;
+                    const toY = y + heightHalf + heightQuarter;
+                    drawArrow(canvasCtx, fromX, fromY, fromX, toY);
+                    break;
+                }
+                case "BottomRight": {
+                    const fromX = x + widthHalf + widthQuarter;
+                    const fromY = y + heightHalf + heightQuarter;
+                    const toX = x + widthQuarter;
+                    drawArrow(canvasCtx, fromX, fromY, toX, fromY);
+                    break;
+                }
+                case "BottomLeft": {
+                    const fromX = x + widthQuarter;
+                    const fromY = y + heightHalf + heightQuarter;
+                    const toY = y + heightQuarter;
+                    drawArrow(canvasCtx, fromX, fromY, fromX, toY);
+                    break;
+                }
+                default:
+                    break;
+            }
+        }
+    }
+
+    function drawArrow(canvasCtx, fromX, fromY, toX, toY) {
+        const headSize = 10; // length of head in pixels
+        const dx = toX - fromX;
+        const dy = toY - fromY;
+        const angle = Math.atan2(dy, dx);
+
+        canvasCtx.beginPath();
+        canvasCtx.setLineDash([8]);
+        canvasCtx.moveTo(fromX, fromY);
+        canvasCtx.lineTo(toX, toY);
+        canvasCtx.stroke();
+
+        canvasCtx.beginPath();
+        canvasCtx.setLineDash([]);
+        canvasCtx.moveTo(toX, toY);
+        canvasCtx.lineTo(toX - headSize * Math.cos(angle - Math.PI / 6), toY - headSize * Math.sin(angle - Math.PI / 6));
+        canvasCtx.moveTo(toX, toY);
+        canvasCtx.lineTo(toX - headSize * Math.cos(angle + Math.PI / 6), toY - headSize * Math.sin(angle + Math.PI / 6));
+        canvasCtx.stroke();
     }
 "#;
 const MINIMAP_ACTIONS_JS: &str = r#"
@@ -146,6 +205,13 @@ const MINIMAP_ACTIONS_JS: &str = r#"
 
             canvasCtx.moveTo(x + w, y + h);
             canvasCtx.lineTo(x + w, canvas.height);
+        }
+        if (boundType === "AutoMobbing") {
+            canvasCtx.moveTo(x + w / 2, y + 2);
+            canvasCtx.lineTo(x + w / 2, y + h - 2);
+            
+            canvasCtx.moveTo(x + 2, y + h / 2);
+            canvasCtx.lineTo(x + w - 2, y + h / 2);
         }
         canvasCtx.stroke();
     }
@@ -430,6 +496,9 @@ fn Canvas(
             };
             let destinations = current_state.destinations;
             let bound = current_state.platforms_bound;
+            let quadrant = current_state
+                .auto_mob_quadrant
+                .map(|quadrant| quadrant.to_string());
             let frame = current_state.frame;
             let current_state = MinimapState {
                 position: current_state.position,
@@ -454,7 +523,8 @@ fn Canvas(
             let Some((frame, width, height)) = frame else {
                 continue;
             };
-            let Err(error) = canvas.send((frame, width, height, destinations)) else {
+            let Err(error) = canvas.send((frame, width, height, destinations, bound, quadrant))
+            else {
                 continue;
             };
             if matches!(error, EvalError::Finished) {
@@ -465,7 +535,7 @@ fn Canvas(
     });
 
     rsx! {
-        div { class: "relative h-31 xl:h-33 rounded-2xl bg-gray-900",
+        div { class: "relative h-31 xl:h-38 rounded-2xl bg-gray-900",
             canvas {
                 class: "absolute inset-0 rounded-2xl w-full h-full",
                 id: "canvas-minimap",

@@ -27,15 +27,15 @@ use crate::detect::{ArrowsCalibrating, ArrowsState, CachedDetector, Detector};
 #[cfg(debug_assertions)]
 use crate::mat::OwnedMat;
 use crate::{
-    Action, ActionCondition, ActionConfigurationCondition, ActionKey, CaptureMode, Character,
-    GameState, KeyBinding, KeyBindingConfiguration, Minimap as MinimapData, PotionMode,
+    Action, ActionCondition, ActionConfigurationCondition, ActionKey, BoundQuadrant, CaptureMode,
+    Character, GameState, KeyBinding, KeyBindingConfiguration, Minimap as MinimapData, PotionMode,
     RequestHandler, RotationMode, RotatorMode, Settings,
     bridge::{ImageCapture, ImageCaptureKind, KeySenderMethod},
     buff::{BuffKind, BuffState},
     context::Context,
     database::InputMethod,
     minimap::{Minimap, MinimapState},
-    player::PlayerState,
+    player::{PlayerState, Quadrant},
     poll_request,
     rotator::{Rotator, RotatorBuildArgs},
     skill::SkillKind,
@@ -105,6 +105,14 @@ impl DefaultRequestHandler<'_> {
                 } else {
                     None
                 },
+                auto_mob_quadrant: self.player.auto_mob_last_quadrant().map(|quadrant| {
+                    match quadrant {
+                        Quadrant::TopLeft => BoundQuadrant::TopLeft,
+                        Quadrant::TopRight => BoundQuadrant::TopRight,
+                        Quadrant::BottomRight => BoundQuadrant::BottomRight,
+                        Quadrant::BottomLeft => BoundQuadrant::BottomLeft,
+                    }
+                }),
             };
             let _ = GAME_STATE.send(game_state);
         }

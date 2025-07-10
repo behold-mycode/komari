@@ -73,7 +73,7 @@ const UNSTUCK_GAMBA_MODE_COUNT: u32 = 3;
 const VELOCITY_SAMPLES: usize = MOVE_TIMEOUT as usize;
 
 #[derive(Debug, Clone, Copy)]
-enum Quadrant {
+pub enum Quadrant {
     TopLeft,
     TopRight,
     BottomRight,
@@ -548,6 +548,11 @@ impl PlayerState {
                 && self.config.rune_platforms_pathing_up_jump_only)
     }
 
+    #[inline]
+    pub fn auto_mob_last_quadrant(&self) -> Option<Quadrant> {
+        self.auto_mob_last_quadrant
+    }
+
     /// Picks a pathing point in auto mobbing to move to.
     ///
     /// `bound` is relative to the minimap top-left coordinate.
@@ -597,12 +602,13 @@ impl PlayerState {
                 Rect::new(bound.x, bound_y_mid, bound_width_half, bound_height_half)
             }
         };
+        self.auto_mob_last_quadrant = Some(next_quadrant);
 
         let bound_xs = next_quadrant_bound.x..(next_quadrant_bound.x + next_quadrant_bound.width);
         let bound_ys = next_quadrant_bound.y..(next_quadrant_bound.y + next_quadrant_bound.height);
 
-        // Flip a coin to use a platform inside the next quadrant bound
-        if context.rng.random_bool(0.5) && !platforms.is_empty() {
+        // Use a random platform inside the next quadrant bound if any
+        if !platforms.is_empty() {
             let platform = context
                 .rng
                 .random_choose(platforms.iter().filter(|platform| {
@@ -610,29 +616,33 @@ impl PlayerState {
                     let xs_overlap = xs.start < bound_xs.end && bound_xs.start < xs.end;
                     let y_contained = bound_ys.contains(&platform.y());
                     xs_overlap && y_contained
-                }))
-                .expect("not empty");
-            let xs_overlap =
-                bound_xs.start.max(platform.xs().start)..bound_xs.end.min(platform.xs().end);
+                }));
+            if let Some(platform) = platform {
+                let xs_overlap =
+                    bound_xs.start.max(platform.xs().start)..bound_xs.end.min(platform.xs().end);
 
-            return Point::new(
-                context.rng.random_range(xs_overlap),
-                bbox.height - platform.y(),
-            );
+                return Point::new(
+                    context.rng.random_range(xs_overlap),
+                    bbox.height - platform.y(),
+                );
+            }
         }
 
         let x = context.rng.random_range(bound_xs);
-        let y = self
-            .auto_mob_reachable_y_map
-            .iter()
-            .find_map(|(y, count)| {
-                let y = bbox.height - y;
-                if bound_ys.contains(&y) && *count >= AUTO_MOB_REACHABLE_Y_SOLIDIFY_COUNT {
-                    Some(y)
-                } else {
-                    None
-                }
-            })
+        let y = context
+            .rng
+            .random_choose(
+                self.auto_mob_reachable_y_map
+                    .iter()
+                    .filter_map(|(y, count)| {
+                        if *count >= AUTO_MOB_REACHABLE_Y_SOLIDIFY_COUNT {
+                            let y = bbox.height - y;
+                            bound_ys.contains(&y).then_some(y)
+                        } else {
+                            None
+                        }
+                    }),
+            )
             .unwrap_or(bbox.height - context.rng.random_range(bound_ys));
 
         Point::new(x, y)
