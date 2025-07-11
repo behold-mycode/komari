@@ -28,7 +28,7 @@ use crate::{
 };
 
 const COOLDOWN_BETWEEN_QUEUE_MILLIS: u128 = 20_000;
-const AUTO_MOB_SAME_QUAD_THRESHOLD: u32 = 4;
+const AUTO_MOB_SAME_QUAD_THRESHOLD: u32 = 5;
 
 /// [`Condition`] evaluation result.
 enum ConditionResult {

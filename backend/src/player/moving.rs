@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use log::{debug, info};
 use opencv::core::Point;
 use platforms::windows::KeyKind;
@@ -27,6 +29,8 @@ use crate::{
 /// Maximum amount of ticks a change in x or y direction must be detected.
 pub const MOVE_TIMEOUT: u32 = 5;
 
+/// Jumpable y distances.
+const JUMPABLE_RANGE: Range<i32> = 4..JUMP_THRESHOLD;
 const UP_JUMP_THRESHOLD: i32 = 10;
 
 /// Intermediate points to move by.
@@ -340,7 +344,7 @@ pub fn update_moving_context(
     }
 
     // Check to jump
-    if !skip_destination && y_direction > 0 && y_distance < JUMP_THRESHOLD {
+    if !skip_destination && y_direction > 0 && JUMPABLE_RANGE.contains(&y_distance) {
         return abort_action_on_state_repeat(Player::Jumping(moving), context, state);
     }
 
