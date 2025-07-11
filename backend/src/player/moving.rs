@@ -558,7 +558,7 @@ mod tests {
     fn update_moving_to_jumping() {
         let context = Context::new(None, None);
         let cur_pos = Point::new(100, 100);
-        let dest = Point::new(100, 107);
+        let dest = Point::new(100, 106);
         let mut state = PlayerState::default();
         state.last_known_pos = Some(cur_pos);
 
