@@ -340,7 +340,7 @@ pub fn update_moving_context(
     }
 
     // Check to jump
-    if !skip_destination && y_direction > 0 && y_distance >= JUMP_THRESHOLD {
+    if !skip_destination && y_direction > 0 && y_distance < JUMP_THRESHOLD {
         return abort_action_on_state_repeat(Player::Jumping(moving), context, state);
     }
 

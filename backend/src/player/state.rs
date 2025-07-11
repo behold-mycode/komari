@@ -905,9 +905,10 @@ impl PlayerState {
             self.update_health_state(context);
             self.update_rune_validating_state(context);
             self.update_is_dead_state(context);
-            return true;
+            true
+        } else {
+            false
         }
-        false
     }
 
     /// Updates the player current position.
