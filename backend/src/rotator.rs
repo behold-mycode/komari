@@ -1466,4 +1466,119 @@ mod tests {
             }))
         );
     }
+
+    #[test]
+    fn rotator_priority_action_is_ignored_when_executing() {
+        let mut rotator = Rotator::default();
+        let mut player = PlayerState::default();
+        let context = Context::new(None, None);
+
+        // Insert a priority action with condition_kind = None
+        let action_id = 99;
+        rotator.priority_actions.insert(
+            action_id,
+            PriorityAction {
+                condition: Condition(Box::new(|_, _, _| panic!("should not be called"))),
+                condition_kind: None,
+                inner: RotatorAction::Single(NORMAL_ACTION.into()),
+                queue_to_front: false,
+                ignoring: false,
+                last_queued_time: None,
+            },
+        );
+        // Simulate the action is currently being executed by the player
+        player.set_priority_action(action_id, NORMAL_ACTION.into());
+
+        // Call rotate_priority_actions
+        rotator.rotate_priority_actions(&context, &mut player);
+
+        let action = rotator.priority_actions.get(&action_id).unwrap();
+
+        // Assert the action was marked as ignored
+        assert!(action.ignoring);
+        assert!(action.last_queued_time.is_some());
+
+        // It should not be in the queue
+        assert!(!rotator.priority_actions_queue.contains(&action_id));
+    }
+
+    #[test]
+    fn rotator_priority_linked_action_is_ignored_when_executing() {
+        let mut rotator = Rotator::default();
+        let mut player = PlayerState::default();
+        let context = Context::new(None, None);
+
+        let action_id = 42;
+        rotator.priority_actions.insert(
+            action_id,
+            PriorityAction {
+                condition: Condition(Box::new(|_, _, _| panic!("should not be called"))),
+                condition_kind: Some(ActionCondition::Linked),
+                inner: RotatorAction::Linked(LinkedAction {
+                    inner: NORMAL_ACTION.into(),
+                    next: None,
+                }),
+                queue_to_front: false,
+                ignoring: false,
+                last_queued_time: None,
+            },
+        );
+
+        // Simulate action is being executed
+        player.set_priority_action(action_id, NORMAL_ACTION.into());
+
+        rotator.rotate_priority_actions(&context, &mut player);
+
+        let action = rotator.priority_actions.get(&action_id).unwrap();
+
+        assert!(action.ignoring);
+        assert!(action.last_queued_time.is_some());
+        assert!(!rotator.priority_actions_queue.contains(&action_id));
+    }
+
+    #[test]
+    fn rotator_erda_shower_action_ignored_if_another_erda_is_queued() {
+        let mut rotator = Rotator::default();
+        let mut player = PlayerState::default();
+        let context = Context::new(None, None);
+
+        let first_erda_id = 1;
+        let second_erda_id = 2;
+
+        rotator.priority_actions.insert(
+            first_erda_id,
+            PriorityAction {
+                condition: Condition(Box::new(|_, _, _| ConditionResult::Queue)),
+                condition_kind: Some(ActionCondition::ErdaShowerOffCooldown),
+                inner: RotatorAction::Single(NORMAL_ACTION.into()),
+                queue_to_front: false,
+                ignoring: false,
+                last_queued_time: Some(Instant::now()),
+            },
+        );
+
+        rotator.priority_actions.insert(
+            second_erda_id,
+            PriorityAction {
+                condition: Condition(Box::new(|_, _, _| panic!("should not be called"))),
+                condition_kind: Some(ActionCondition::ErdaShowerOffCooldown),
+                inner: RotatorAction::Single(NORMAL_ACTION.into()),
+                queue_to_front: false,
+                ignoring: false,
+                last_queued_time: None,
+            },
+        );
+
+        // Queue the first erda action manually
+        rotator.priority_actions_queue.push_back(first_erda_id);
+
+        // Run rotate
+        rotator.rotate_priority_actions(&context, &mut player);
+
+        let second_erda = rotator.priority_actions.get(&second_erda_id).unwrap();
+
+        assert!(second_erda.ignoring);
+        assert!(second_erda.last_queued_time.is_some());
+        assert!(!rotator.priority_actions_queue.contains(&second_erda_id));
+    }
 }
