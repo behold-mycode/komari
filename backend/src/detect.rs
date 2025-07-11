@@ -1966,7 +1966,7 @@ fn detect_template_single<T: ToInputArray + MatTraitConst>(
         .into_iter()
         .next()
         .ok_or(anyhow!("no match"))
-        .flatten()
+        .and_then(|x| x)
 }
 
 /// Detects multiple matches from `template` with the given BGR image `Mat`.
