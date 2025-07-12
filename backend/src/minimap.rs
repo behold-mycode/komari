@@ -164,6 +164,11 @@ impl MinimapIdle {
     }
 
     #[inline]
+    pub fn portals(&self) -> Array<Rect, MAX_PORTALS_COUNT> {
+        self.portals
+    }
+
+    #[inline]
     pub fn has_elite_boss(&self) -> bool {
         self.has_elite_boss.value.is_some()
     }

@@ -27,7 +27,7 @@ const MINIMAP_JS: &str = r#"
     const canvasCtx = canvas.getContext("2d");
 
     while (true) {
-        const [buffer, width, height, destinations, bound, quadrant] = await dioxus.recv();
+        const [buffer, width, height, destinations, bound, quadrant, portals] = await dioxus.recv();
         const data = new ImageData(new Uint8ClampedArray(buffer), width, height);
         const bitmap = await createImageBitmap(data);
 
@@ -35,6 +35,8 @@ const MINIMAP_JS: &str = r#"
         canvasCtx.strokeStyle = "rgb(128, 255, 204)";
         canvasCtx.drawImage(bitmap, 0, 0, width, height, 0, 0, canvas.width, canvas.height);
 
+        const destinationSize = 4;
+        const destinationSizeHalf = destinationSize / 2;
         let prevX = 0;
         let prevY = 0;
         for (let i = 0; i < destinations.length; i++) {
@@ -42,18 +44,29 @@ const MINIMAP_JS: &str = r#"
             x = (x / width) * canvas.width;
             y = ((height - y) / height) * canvas.height;
 
-            canvasCtx.fillRect(x, y, 4, 4);
+            canvasCtx.fillRect(x, y, destinationSize, destinationSize);
 
             if (i > 0) {
                 canvasCtx.beginPath();
                 canvasCtx.setLineDash([8]);
-                canvasCtx.moveTo(prevX + 2, prevY + 2);
-                canvasCtx.lineTo(x + 2, y + 2);
+                canvasCtx.moveTo(prevX + destinationSizeHalf, prevY + destinationSizeHalf);
+                canvasCtx.lineTo(x + destinationSizeHalf, y + destinationSizeHalf);
                 canvasCtx.stroke();
             }
 
             prevX = x;
             prevY = y;
+        }
+
+        canvasCtx.fillStyle = "rgb(100, 92, 255)";
+        for (let i = 0; i < portals.length; i++) {
+            const portal = portals[i];
+            const x = (portal.x / width) * canvas.width;
+            const y = (portal.y / height) * canvas.height;
+            const w = (portal.width / width) * canvas.width;
+            const h = (portal.height / height) * canvas.height;
+
+            canvasCtx.fillRect(x, y, w, h);
         }
 
         if (quadrant !== null && bound !== null) {
@@ -105,7 +118,7 @@ const MINIMAP_JS: &str = r#"
     }
 
     function drawArrow(canvasCtx, fromX, fromY, toX, toY) {
-        const headSize = 10; // length of head in pixels
+        const headSize = 10; // Length of head in pixels
         const dx = toX - fromX;
         const dy = toY - fromY;
         const angle = Math.atan2(dy, dx);
@@ -505,6 +518,7 @@ fn Canvas(
                 .auto_mob_quadrant
                 .map(|quadrant| quadrant.to_string());
             let frame = current_state.frame;
+            let portals = current_state.portals;
             let current_state = MinimapState {
                 position: current_state.position,
                 health: current_state.health,
@@ -532,7 +546,8 @@ fn Canvas(
             let Some((frame, width, height)) = frame else {
                 continue;
             };
-            let Err(error) = canvas.send((frame, width, height, destinations, bound, quadrant))
+            let Err(error) =
+                canvas.send((frame, width, height, destinations, bound, quadrant, portals))
             else {
                 continue;
             };

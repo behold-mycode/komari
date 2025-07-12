@@ -133,6 +133,7 @@ enum Response {
     TestSpinRune,
 }
 
+/// Request handler of incoming requests from UI.
 pub(crate) trait RequestHandler {
     fn on_rotate_actions(&mut self, halting: bool);
 
@@ -170,6 +171,7 @@ pub(crate) trait RequestHandler {
     fn on_test_spin_rune(&self);
 }
 
+/// The four quads of a bound.
 #[derive(Clone, Copy, Debug, Display)]
 pub enum BoundQuadrant {
     TopLeft,
@@ -178,6 +180,7 @@ pub enum BoundQuadrant {
     BottomLeft,
 }
 
+/// A struct for storing game information.
 #[derive(Clone, Debug)]
 pub struct GameState {
     pub position: Option<(i32, i32)>,
@@ -190,6 +193,7 @@ pub struct GameState {
     pub halting: bool,
     pub frame: Option<(Vec<u8>, usize, usize)>,
     pub platforms_bound: Option<Bound>,
+    pub portals: Vec<Bound>,
     pub auto_mob_quadrant: Option<BoundQuadrant>,
 }
 
