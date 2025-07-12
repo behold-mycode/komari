@@ -901,7 +901,7 @@ fn solve_rune_priority_action() -> PriorityAction {
                 return ConditionResult::Skip;
             }
             if let Minimap::Idle(idle) = context.minimap
-                && idle.rune.value().is_some()
+                && idle.rune().is_some()
                 && matches!(context.buffs[BuffKind::Rune], Buff::No)
             {
                 return ConditionResult::Queue;
@@ -993,7 +993,7 @@ fn elite_boss_change_channel_priority_action() -> PriorityAction {
                 return ConditionResult::Skip;
             }
             if let Minimap::Idle(idle) = context.minimap
-                && idle.has_elite_boss
+                && idle.has_elite_boss()
             {
                 ConditionResult::Queue
             } else {
@@ -1018,7 +1018,7 @@ fn elite_boss_use_key_priority_action(key: KeyBinding) -> PriorityAction {
                 return ConditionResult::Skip;
             }
             if let Minimap::Idle(idle) = context.minimap
-                && idle.has_elite_boss
+                && idle.has_elite_boss()
             {
                 ConditionResult::Queue
             } else {
@@ -1260,7 +1260,7 @@ mod tests {
         let mut rotator = Rotator::default();
         let mut player = PlayerState::default();
         let mut minimap = MinimapIdle::default();
-        minimap.rune.set_value(Point::default());
+        minimap.set_rune(Point::default());
         let mut context = Context::new(None, None);
         context.minimap = Minimap::Idle(minimap);
         context.buffs[BuffKind::Rune] = Buff::No;

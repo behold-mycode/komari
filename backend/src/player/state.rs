@@ -732,7 +732,7 @@ impl PlayerState {
 
     /// Tracks the currently picked reachable y to solidify the y position.
     ///
-    /// After [`Self::auto_mob_pick_reachable_y_moving_state`] has been called in the action entry,
+    /// After [`Self::auto_mob_pick_reachable_y_position`] has been called in the action entry,
     /// this function should be called in the terminal state of the action.
     pub(super) fn auto_mob_track_reachable_y(&mut self, y: i32) {
         // state.last_known_pos is explicitly used instead of y
