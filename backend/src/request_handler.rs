@@ -70,6 +70,7 @@ impl DefaultRequestHandler<'_> {
         poll_request(self);
 
         if GAME_STATE.is_empty() {
+            // TODO: Separate into variables for better readability
             let game_state = GameState {
                 position: self.player.last_known_pos.map(|pos| (pos.x, pos.y)),
                 health: self.player.health,
@@ -104,6 +105,14 @@ impl DefaultRequestHandler<'_> {
                     idle.platforms_bound.map(|bound| bound.into())
                 } else {
                     None
+                },
+                portals: if let Minimap::Idle(idle) = self.context.minimap {
+                    idle.portals()
+                        .into_iter()
+                        .map(|portal| portal.into())
+                        .collect::<Vec<_>>()
+                } else {
+                    vec![]
                 },
                 auto_mob_quadrant: self.player.auto_mob_last_quadrant().map(|quadrant| {
                     match quadrant {
