@@ -124,7 +124,7 @@ fn on_player_action(
         }) => Some((Player::UseKey(UseKey::from_action(action)), false)),
         PlayerAction::SolveRune => {
             if let Minimap::Idle(idle) = context.minimap
-                && let Some(rune) = idle.rune.value().copied()
+                && let Some(rune) = idle.rune()
             {
                 if state.config.rune_platforms_pathing {
                     if !state.is_stationary {

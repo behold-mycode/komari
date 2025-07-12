@@ -143,6 +143,10 @@ fn on_player_action(
                     false,
                 ));
             }
+            if has_teleport_key && !moving.completed {
+                return None;
+            }
+
             let (x_distance, _) = moving.x_distance_direction_from(false, cur_pos);
             let (y_distance, _) = moving.y_distance_direction_from(false, cur_pos);
             on_auto_mob_use_key_action(context, action, cur_pos, x_distance, y_distance)

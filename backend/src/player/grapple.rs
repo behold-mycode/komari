@@ -1,6 +1,6 @@
 use super::{
     Player, PlayerAction, PlayerActionPingPong, PlayerState,
-    actions::{on_action, on_auto_mob_use_key_action, on_ping_pong_double_jump_action},
+    actions::{on_action_state, on_auto_mob_use_key_action, on_ping_pong_double_jump_action},
     moving::Moving,
     state::LastMovement,
     timeout::{MovingLifecycle, next_moving_lifecycle_with_axis},
@@ -74,9 +74,9 @@ pub fn update_grappling_context(
                 moving = moving.timeout_current(TIMEOUT);
             }
 
-            on_action(
+            on_action_state(
                 state,
-                |action| match action {
+                |state, action| match action {
                     PlayerAction::AutoMob(_) => {
                         if moving.completed && moving.is_destination_intermediate() {
                             return Some((
@@ -84,6 +84,10 @@ pub fn update_grappling_context(
                                 false,
                             ));
                         }
+                        if state.config.teleport_key.is_some() && !moving.completed {
+                            return None;
+                        }
+
                         let (x_distance, _) = moving.x_distance_direction_from(false, cur_pos);
                         let (y_distance, _) = moving.y_distance_direction_from(false, cur_pos);
                         on_auto_mob_use_key_action(context, action, cur_pos, x_distance, y_distance)
