@@ -1,7 +1,11 @@
-use std::fmt;
+use std::{
+    collections::{HashMap, HashSet},
+    fmt,
+    hash::{Hash, Hasher},
+};
 
 use anyhow::{Result, anyhow};
-use log::debug;
+use log::{debug, info};
 use opencv::core::{MatTraitConst, Point, Rect, Vec4b};
 
 use crate::{
@@ -18,17 +22,53 @@ use crate::{
 };
 
 const MINIMAP_BORDER_WHITENESS_THRESHOLD: u8 = 160;
+const MAX_PORTALS_COUNT: usize = 16;
 
+/// A wrapper struct for [`Rect`] that implements [`Hash`].
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+struct HashedRect {
+    inner: Rect,
+}
+
+impl Hash for HashedRect {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner.x.hash(state);
+        self.inner.y.hash(state);
+        self.inner.width.hash(state);
+        self.inner.height.hash(state);
+    }
+}
+
+/// Minimap persistent state.
 #[derive(Debug, Default)]
 pub struct MinimapState {
+    /// The minimap data saved in the database.
+    ///
+    /// This data is created based on the current detected minimap, saved to the database and then
+    /// later (re-)selected by user.
     data: Option<MinimapData>,
+    /// Task to detect the current minimap bounding box and anchor points.
     minimap_task: Option<Task<Result<(Anchors, Rect)>>>,
+    /// Task to detect the current minimap's rune.
     rune_task: Option<Task<Result<Point>>>,
+    /// Task to detect the current minimap's portals.
     portals_task: Option<Task<Result<Vec<Rect>>>>,
-    has_elite_boss_task: Option<Task<Result<bool>>>,
+    /// Map to invalidate portals.
+    ///
+    /// If there is any false-positive portal, this helps remove that portal over time to ensure
+    /// player's action will not get wrongly cancelled (e.g. in up jump).
+    portals_invalidate_map: HashMap<HashedRect, u32>,
+    /// Task to detect elite boss.
+    has_elite_boss_task: Option<Task<Result<()>>>,
+    /// Task to detect guildie player(s) in the minimap.
     has_guildie_player_task: Option<Task<Result<()>>>,
+    /// Task to detect stranger player(s) in the minimap.
     has_stranger_player_task: Option<Task<Result<()>>>,
+    /// Task to detect firend player(s) in the minimap.
     has_friend_player_task: Option<Task<Result<()>>>,
+    /// Whether to update the [`MinimapIdle::platforms`].
+    ///
+    /// This is set to true each time [`Self::data`] is updated.
     update_platforms: bool,
 }
 
@@ -66,15 +106,6 @@ impl<T> Threshold<T> {
             max_fail_count,
         }
     }
-
-    #[cfg(test)]
-    pub fn set_value(&mut self, value: T) {
-        self.value = Some(value);
-    }
-
-    pub fn value(&self) -> Option<&T> {
-        self.value.as_ref()
-    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -86,17 +117,21 @@ pub struct MinimapIdle {
     /// overlapping the minimap.
     anchors: Anchors,
     /// The bounding box of the minimap.
+    ///
+    /// This is in OpenCV native coordinate, which is top-left.
     pub bbox: Rect,
     /// Whether minimap UI is being partially overlapped.
     ///
     /// It is partially overlapped by other UIs if one of the anchor mismatches.
     pub partially_overlapping: bool,
     /// The rune position.
-    pub rune: Threshold<Point>,
+    ///
+    /// The rune position is in player-relative coordinate, which is bottom-left.
+    rune: Threshold<Point>,
     /// Whether there is an elite boss.
     ///
-    /// This does not belong to minimap though...
-    pub has_elite_boss: bool,
+    /// TODO: This does not belong to minimap.
+    has_elite_boss: Threshold<()>,
     /// Whether there is a guildie.
     has_guildie_player: Threshold<()>,
     /// Whether there is a stranger.
@@ -105,20 +140,58 @@ pub struct MinimapIdle {
     has_friend_player: Threshold<()>,
     /// The portal positions.
     ///
-    /// Praying each night that there won't be more than 16 portals...
-    /// Initially, it is only 8 until it crashes at Henesys with 10 portals smh
-    pub portals: Array<Rect, 16>,
+    /// The portals are in player-relative coordinate, which is bottom-left.
+    portals: Array<Rect, MAX_PORTALS_COUNT>,
     /// The user provided platforms.
+    ///
+    /// The platforms are in player-relative coordinate, which is bottom-left.
     pub platforms: Array<PlatformWithNeighbors, MAX_PLATFORMS_COUNT>,
     /// The largest rectangle containing all the platforms.
+    ///
+    /// The platforms bound is in OpenCV native coordinate, which is top-left.
     pub platforms_bound: Option<Rect>,
 }
 
 impl MinimapIdle {
+    #[inline]
+    pub fn rune(&self) -> Option<Point> {
+        self.rune.value
+    }
+
+    #[cfg(test)]
+    pub fn set_rune(&mut self, rune: Point) {
+        self.rune.value = Some(rune);
+    }
+
+    #[inline]
+    pub fn portals(&self) -> Array<Rect, MAX_PORTALS_COUNT> {
+        self.portals
+    }
+
+    #[inline]
+    pub fn has_elite_boss(&self) -> bool {
+        self.has_elite_boss.value.is_some()
+    }
+
+    #[inline]
     pub fn has_any_other_player(&self) -> bool {
         self.has_guildie_player.value.is_some()
             || self.has_stranger_player.value.is_some()
             || self.has_friend_player.value.is_some()
+    }
+
+    #[inline]
+    pub fn is_position_inside_portal(&self, pos: Point) -> bool {
+        for portal in self.portals {
+            let x_range = portal.x..(portal.x + portal.width);
+            let y_range = portal.y..(portal.y + portal.height);
+
+            if x_range.contains(&pos.x) && y_range.contains(&pos.y) {
+                info!(target: "minimap", "position {pos:?} is inside portal {portal:?}");
+                return true;
+            }
+        }
+        false
     }
 }
 
@@ -170,6 +243,7 @@ fn update_detecting_context(context: &Context, state: &mut MinimapState) -> Mini
     state.update_platforms = false;
     state.rune_task = None;
     state.portals_task = None;
+    state.portals_invalidate_map.clear();
     state.has_elite_boss_task = None;
     state.has_guildie_player_task = None;
     state.has_stranger_player_task = None;
@@ -180,7 +254,7 @@ fn update_detecting_context(context: &Context, state: &mut MinimapState) -> Mini
         bbox,
         partially_overlapping: false,
         rune: Threshold::new(3),
-        has_elite_boss: false,
+        has_elite_boss: Threshold::new(2),
         has_guildie_player: Threshold::new(2),
         has_stranger_player: Threshold::new(2),
         has_friend_player: Threshold::new(2),
@@ -251,7 +325,13 @@ fn update_idle_context(
         has_friend_player,
         OtherPlayerKind::Friend,
     );
-    let portals = update_portals_task(context, &mut state.portals_task, portals, bbox);
+    let portals = update_portals_task(
+        context,
+        &mut state.portals_task,
+        &mut state.portals_invalidate_map,
+        portals,
+        bbox,
+    );
 
     // TODO: any better way to read persistent state in other contextual?
     if state.update_platforms {
@@ -303,12 +383,14 @@ fn update_rune_task(
         return rune;
     }
 
-    let rune = update_threshold_detection(context, 10000, rune, task, move |detector| {
+    let rune = update_threshold_detection(context, 5000, rune, task, move |detector| {
         detector
             .detect_minimap_rune(minimap)
             .map(|rune| center_of_bbox(rune, minimap))
     });
+
     if was_none && rune.value.is_some() && !context.halting {
+        info!(target: "minimap", "sending notification for rune...");
         let _ = context
             .notification
             .schedule_notification(NotificationKind::RuneAppear);
@@ -319,24 +401,26 @@ fn update_rune_task(
 #[inline]
 fn update_elite_boss_task(
     context: &Context,
-    task: &mut Option<Task<Result<bool>>>,
-    has_elite_boss: bool,
-) -> bool {
-    let update = update_detection_task(context, 10000, task, move |detector| {
-        Ok(detector.detect_elite_boss_bar())
-    });
-    match update {
-        Update::Ok(current_has_elite_boss) => {
-            if !has_elite_boss && current_has_elite_boss && !context.halting {
-                let _ = context
-                    .notification
-                    .schedule_notification(NotificationKind::EliteBossAppear);
+    task: &mut Option<Task<Result<()>>>,
+    has_elite_boss: Threshold<()>,
+) -> Threshold<()> {
+    let did_have_elite_boss = has_elite_boss.value.is_some();
+    let has_elite_boss =
+        update_threshold_detection(context, 5000, has_elite_boss, task, move |detector| {
+            if detector.detect_elite_boss_bar() {
+                Ok(())
+            } else {
+                Err(anyhow!("no elite boss detected"))
             }
-            current_has_elite_boss
-        }
-        Update::Pending => has_elite_boss,
-        Update::Err(_) => unreachable!(),
+        });
+
+    if !context.halting && !did_have_elite_boss && has_elite_boss.value.is_some() {
+        info!(target: "minimap", "sending elite boss notification...");
+        let _ = context
+            .notification
+            .schedule_notification(NotificationKind::EliteBossAppear);
     }
+    has_elite_boss
 }
 
 #[inline]
@@ -356,6 +440,7 @@ fn update_other_player_task(
         }
     });
     if !context.halting && !has_player && threshold.value.is_some() {
+        info!(target: "minimap", "sending {kind:?} notification...");
         let notification = match kind {
             OtherPlayerKind::Guildie => NotificationKind::PlayerGuildieAppear,
             OtherPlayerKind::Stranger => NotificationKind::PlayerStrangerAppear,
@@ -370,25 +455,74 @@ fn update_other_player_task(
 fn update_portals_task(
     context: &Context,
     task: &mut Option<Task<Result<Vec<Rect>>>>,
-    portals: Array<Rect, 16>,
+    invalidate_map: &mut HashMap<HashedRect, u32>,
+    portals: Array<Rect, MAX_PORTALS_COUNT>,
     minimap: Rect,
-) -> Array<Rect, 16> {
+) -> Array<Rect, MAX_PORTALS_COUNT> {
     let update = update_detection_task(context, 5000, task, move |detector| {
         Ok(detector.detect_minimap_portals(minimap))
     });
     match update {
-        Update::Ok(vec) if portals.len() < vec.len() => {
-            Array::from_iter(vec.into_iter().map(|portal| {
-                Rect::new(
-                    portal.x,
-                    minimap.height - portal.br().y,
-                    portal.width,
-                    portal.height,
-                )
-            }))
+        Update::Ok(vec) => {
+            let new_portals = vec
+                .into_iter()
+                .map(|portal| HashedRect {
+                    inner: Rect::new(
+                        portal.x,
+                        minimap.height - portal.br().y, // Flip coordinate to bottom-left
+                        portal.width,
+                        portal.height,
+                    ),
+                })
+                .collect::<HashSet<_>>();
+            let old_portals = portals
+                .into_iter()
+                .map(|portal| HashedRect { inner: portal })
+                .collect::<HashSet<_>>();
+
+            merge_portals_and_invalidate_if_needed(old_portals, new_portals, invalidate_map)
         }
-        Update::Ok(_) | Update::Err(_) | Update::Pending => portals,
+        Update::Err(_) | Update::Pending => portals,
     }
+}
+
+fn merge_portals_and_invalidate_if_needed(
+    old_portals: HashSet<HashedRect>,
+    new_portals: HashSet<HashedRect>,
+    invalidate_map: &mut HashMap<HashedRect, u32>,
+) -> Array<Rect, MAX_PORTALS_COUNT> {
+    const INVALIDATE_THRESHOLD: u32 = 3;
+
+    let mut merged_portals = new_portals
+        .union(&old_portals)
+        .copied()
+        .collect::<HashSet<_>>();
+
+    // Reset all the intersection portals invalidate count to 0
+    for portal in new_portals.intersection(&old_portals) {
+        invalidate_map
+            .entry(*portal)
+            .and_modify(|count| *count = 0)
+            .or_insert(0);
+    }
+    // Increment detection failed portals invalidate count
+    for portal in old_portals.difference(&new_portals) {
+        let count = invalidate_map
+            .entry(*portal)
+            .and_modify(|count| *count += 1)
+            .or_insert(1);
+        if *count >= INVALIDATE_THRESHOLD {
+            invalidate_map.remove(portal);
+            merged_portals.remove(portal);
+        }
+    }
+    if merged_portals.len() >= MAX_PORTALS_COUNT {
+        // TODO: Truncate instead?
+        invalidate_map.clear();
+        merged_portals.clear();
+    }
+
+    Array::from_iter(merged_portals.into_iter().map(|portal| portal.inner))
 }
 
 fn platforms_from_data(
@@ -436,11 +570,10 @@ where
         }
         Update::Err(_) => {
             if threshold.value.is_some() {
+                threshold.fail_count += 1;
                 if threshold.fail_count >= threshold.max_fail_count {
                     threshold.value = None;
                     threshold.fail_count = 0;
-                } else {
-                    threshold.fail_count += 1;
                 }
             }
         }
@@ -571,9 +704,20 @@ mod tests {
                 assert_eq!(idle.anchors, anchors);
                 assert_eq!(idle.bbox, bbox);
                 assert!(!idle.partially_overlapping);
-                assert_eq!(state.data, None);
                 assert_eq!(idle.rune.value, None);
-                assert!(!idle.has_elite_boss);
+                assert!(!idle.has_elite_boss());
+                assert!(!idle.has_any_other_player());
+                assert!(idle.portals.is_empty());
+
+                assert_eq!(state.data, None);
+                assert_matches!(state.minimap_task, Some(_));
+                assert_matches!(state.rune_task, None);
+                assert_matches!(state.has_elite_boss_task, None);
+                assert_matches!(state.has_guildie_player_task, None);
+                assert_matches!(state.has_stranger_player_task, None);
+                assert_matches!(state.has_friend_player_task, None);
+                assert_matches!(state.portals_task, None);
+                assert!(state.portals_invalidate_map.is_empty());
             }
             _ => unreachable!(),
         }
@@ -589,7 +733,7 @@ mod tests {
             bbox,
             partially_overlapping: false,
             rune: Threshold::new(3),
-            has_elite_boss: false,
+            has_elite_boss: Threshold::default(),
             has_guildie_player: Threshold::default(),
             has_stranger_player: Threshold::default(),
             has_friend_player: Threshold::default(),
@@ -606,5 +750,163 @@ mod tests {
             }
             _ => unreachable!(),
         }
+    }
+
+    fn rect(x: i32, y: i32, w: i32, h: i32) -> Rect {
+        Rect::new(x, y, w, h)
+    }
+
+    fn hashed(x: i32, y: i32, w: i32, h: i32) -> HashedRect {
+        HashedRect {
+            inner: rect(x, y, w, h),
+        }
+    }
+
+    #[test]
+    fn merge_portals_and_invalidate_if_needed_normal() {
+        let old = HashSet::from([hashed(0, 0, 10, 10)]);
+        let new = HashSet::from([hashed(10, 10, 5, 5)]);
+        let mut map = HashMap::new();
+
+        let merged = merge_portals_and_invalidate_if_needed(old, new, &mut map)
+            .into_iter()
+            .collect::<Vec<_>>();
+        let expected = vec![rect(0, 0, 10, 10), rect(10, 10, 5, 5)];
+
+        assert_eq!(merged.len(), 2);
+        for rect in expected {
+            assert!(merged.contains(&rect));
+        }
+    }
+
+    #[test]
+    fn merge_portals_and_invalidate_if_needed_reset_invalidation_count_on_match() {
+        let portal = hashed(1, 1, 5, 5);
+        let old = HashSet::from([portal]);
+        let new = HashSet::from([portal]);
+        let mut map = HashMap::from([(portal, 2)]);
+
+        merge_portals_and_invalidate_if_needed(old, new, &mut map);
+        assert_eq!(map.get(&portal), Some(&0));
+    }
+
+    #[test]
+    fn merge_portals_and_invalidate_if_needed_increment_invalidation_count_on_missing() {
+        let portal = hashed(2, 2, 4, 4);
+        let old = HashSet::from([portal]);
+        let new = HashSet::new();
+        let mut map = HashMap::from([(portal, 1)]);
+
+        merge_portals_and_invalidate_if_needed(old, new, &mut map);
+        assert_eq!(map.get(&portal), Some(&2));
+    }
+
+    #[test]
+    fn merge_portals_and_invalidate_if_needed_remove_portal_on_threshold_exceeded() {
+        let old_portal = hashed(3, 3, 6, 6);
+        let new_portal = hashed(5, 5, 5, 5);
+        let old = HashSet::from([old_portal]);
+        let new = HashSet::from([new_portal]);
+        let mut map = HashMap::from([(old_portal, 2)]); // Already at threshold
+
+        let result = merge_portals_and_invalidate_if_needed(old, new, &mut map);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], new_portal.inner);
+        assert!(!map.contains_key(&old_portal));
+    }
+
+    #[test]
+    fn merge_portals_and_invalidate_if_needed_clear_on_overflow() {
+        let mut old = HashSet::new();
+        let mut new = HashSet::new();
+        let mut map = HashMap::new();
+
+        for i in 0..MAX_PORTALS_COUNT + 1 {
+            let portal = hashed(i as i32, i as i32, 1, 1);
+            old.insert(portal);
+            new.insert(portal);
+            map.insert(portal, 0);
+        }
+
+        let result = merge_portals_and_invalidate_if_needed(old, new, &mut map);
+        assert_eq!(result.len(), 0);
+        assert!(map.is_empty());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn update_threshold_detection_success_resets_fail_count() {
+        let mut threshold = Threshold::new(2);
+        threshold.value = Some(Point::new(1, 2));
+        threshold.fail_count = 1;
+        let mut task = None;
+        let mut detector = MockDetector::new();
+        detector.expect_clone().returning(MockDetector::default);
+        let context = Context::new(None, Some(detector));
+
+        while task
+            .as_ref()
+            .is_none_or(|task: &Task<Result<Point>>| !task.completed())
+        {
+            threshold =
+                update_threshold_detection(&context, 0, threshold, &mut task, |_detector| {
+                    Ok(Point::new(5, 5))
+                });
+            time::advance(Duration::from_millis(1000)).await;
+        }
+
+        assert_eq!(threshold.value, Some(Point::new(5, 5)));
+        assert_eq!(threshold.fail_count, 0);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn update_threshold_detection_fail_increments_until_limit() {
+        let mut threshold = Threshold::new(2);
+        threshold.value = Some(Point::new(3, 3));
+        threshold.fail_count = 0;
+
+        let mut task = None;
+        let mut detector = MockDetector::new();
+        detector.expect_clone().returning(MockDetector::default);
+        let context = Context::new(None, Some(detector));
+
+        while task
+            .as_ref()
+            .is_none_or(|task: &Task<Result<Point>>| !task.completed())
+        {
+            threshold =
+                update_threshold_detection(&context, 0, threshold, &mut task, |_detector| {
+                    Err(anyhow!("fail"))
+                });
+            time::advance(Duration::from_millis(1000)).await;
+        }
+
+        assert_eq!(threshold.value, Some(Point::new(3, 3)));
+        assert_eq!(threshold.fail_count, 1);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn update_threshold_detection_fail_resets_value_after_limit() {
+        let mut threshold = Threshold::new(2);
+        threshold.value = Some(Point::new(3, 3));
+        threshold.fail_count = 1;
+
+        let mut task = None;
+        let mut detector = MockDetector::new();
+        detector.expect_clone().returning(MockDetector::default);
+        let context = Context::new(None, Some(detector));
+
+        while task
+            .as_ref()
+            .is_none_or(|task: &Task<Result<Point>>| !task.completed())
+        {
+            threshold =
+                update_threshold_detection(&context, 0, threshold, &mut task, |_detector| {
+                    Err(anyhow!("fail again"))
+                });
+            time::advance(Duration::from_millis(1000)).await;
+        }
+
+        assert_eq!(threshold.value, None);
+        assert_eq!(threshold.fail_count, 0);
     }
 }

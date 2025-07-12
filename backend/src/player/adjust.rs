@@ -82,6 +82,7 @@ pub fn update_adjusting_context(
         MovingLifecycle::Started(moving) => {
             // Check to perform a fall and returns to walk
             if !is_intermediate
+                && state.config.teleport_key.is_none()
                 && state.last_movement != Some(LastMovement::Falling)
                 && state.is_stationary
                 && x_distance >= ADJUSTING_MEDIUM_THRESHOLD

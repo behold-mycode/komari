@@ -149,6 +149,7 @@ pub fn update_double_jumping_context(
             // Check to perform a fall and returns to double jump
             if !is_intermediate
                 && !double_jumping.forced
+                && state.config.teleport_key.is_none()
                 && state.last_movement != Some(LastMovement::Falling)
                 && state.is_stationary
             {

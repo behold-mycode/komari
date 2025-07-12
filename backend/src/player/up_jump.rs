@@ -1,4 +1,3 @@
-use log::debug;
 use platforms::windows::KeyKind;
 
 use super::{
@@ -79,17 +78,11 @@ pub fn update_up_jumping_context(
                 return Player::UpJumping(up_jumping.moving(moving.timeout_started(false)));
             }
 
-            if let Minimap::Idle(idle) = context.minimap {
-                for portal in idle.portals {
-                    let x_range = portal.x..(portal.x + portal.width);
-                    let y_range = portal.y..(portal.y + portal.height);
-
-                    if x_range.contains(&moving.pos.x) && y_range.contains(&moving.pos.y) {
-                        debug!(target: "player", "abort action due to potential map moving by portal {portal:?}");
-                        state.clear_action_completed();
-                        return Player::Idle;
-                    }
-                }
+            if let Minimap::Idle(idle) = context.minimap
+                && idle.is_position_inside_portal(moving.pos)
+            {
+                state.clear_action_completed();
+                return Player::Idle;
             }
             state.last_movement = Some(LastMovement::UpJumping);
 
@@ -168,6 +161,9 @@ pub fn update_up_jumping_context(
                                 Player::Moving(moving.dest, moving.exact, moving.intermediates),
                                 false,
                             ));
+                        }
+                        if has_teleport_key && !moving.completed {
+                            return None;
                         }
 
                         let (x_distance, _) = moving.x_distance_direction_from(false, cur_pos);
