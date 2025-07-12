@@ -58,15 +58,16 @@ const MINIMAP_JS: &str = r#"
             prevY = y;
         }
 
-        canvasCtx.fillStyle = "rgb(100, 92, 255)";
+        canvasCtx.setLineDash([8]);
+        canvasCtx.strokeStyle = "rgb(160, 155, 255)";
         for (let i = 0; i < portals.length; i++) {
             const portal = portals[i];
             const x = (portal.x / width) * canvas.width;
-            const y = (portal.y / height) * canvas.height;
+            const y = ((height - portal.y - portal.height) / height) * canvas.height;
             const w = (portal.width / width) * canvas.width;
             const h = (portal.height / height) * canvas.height;
 
-            canvasCtx.fillRect(x, y, w, h);
+            canvasCtx.strokeRect(x, y, w, h);
         }
 
         if (quadrant !== null && bound !== null) {

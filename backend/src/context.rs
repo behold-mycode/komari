@@ -376,7 +376,7 @@ fn loop_with_fps(fps: u32, mut on_tick: impl FnMut()) {
             #[cfg(debug_assertions)]
             if now.duration_since(last_logged_instant).as_secs() >= LOG_INTERVAL_SECS {
                 last_logged_instant = now;
-                debug!(target: "context", "ticking running late at {}", elapsed_duration.as_millis());
+                debug!(target: "context", "ticking running late at {}ms", elapsed_duration.as_millis());
             }
         }
     }
