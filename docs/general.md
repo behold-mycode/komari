@@ -159,10 +159,12 @@ Auto-mobbing is feature to hit random mobs detected on screen. It can be enabled
 - The bounds should be the rectangle where you can move around (two edges of the map)
 - While this mode ignores all normal actions, it is still possible to use other priority actions
 - For platforms pathing, see [Platforms Pathing](#platforms-pathing)
-- From v0.8.0, `AutoMobbing` behavior has been improved and will now try to utilize platforms as pathing points if provided:
-  - Pathing point is to help `AutoMobbing` moves to area with more mobs to detect
+- If platforms are provided:
+  - Use platforms as pathing points for more accurate mob positions and better movement:
+    - If not provided, the bot will try to figure out over time what `y` the player can stand on, which can be slow
+    - Providing platforms help figuring out these `y` immediately
   - Try to detect "gaps" between platforms to ignore invalid mob positions
-  - Note that it is only encouraged and not neccessary to add platforms when using auto-mobbing
+  - Note that it is only encouraged and not neccessary to add platforms when using auto-mobbing but then the bot will rely solely on randomness
 
 (From v0.18.0)
 Auto-mobbing now follows a fixed clockwise order based on the provided bound like the below image. This has improved
