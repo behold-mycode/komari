@@ -265,6 +265,7 @@ pub struct Character {
     pub change_channel_key: KeyBindingConfiguration,
     pub feed_pet_key: KeyBindingConfiguration,
     pub feed_pet_millis: u64,
+    #[serde(default)]
     pub num_pets: u32,
     pub potion_key: KeyBindingConfiguration,
     pub potion_mode: PotionMode,
