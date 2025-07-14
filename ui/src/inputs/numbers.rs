@@ -144,6 +144,7 @@ pub fn NumberInputU32(
     #[props(default = String::default())] input_class: String,
     #[props(default = false)] disabled: bool,
     minimum_value: u32,
+    #[props(default = None)] maximum_value: Option<u32>,
     on_value: EventHandler<u32>,
     value: u32,
 ) -> Element {
@@ -154,6 +155,7 @@ pub fn NumberInputU32(
             div_class,
             input_class,
             minimum_value,
+            maximum_value,
             disabled,
             on_value,
             value,
