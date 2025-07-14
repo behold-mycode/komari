@@ -78,7 +78,10 @@ pub fn update_grappling_context(
                 state,
                 |state, action| match action {
                     PlayerAction::AutoMob(_) => {
-                        if moving.completed && moving.is_destination_intermediate() {
+                        if !moving.completed {
+                            return None;
+                        }
+                        if moving.is_destination_intermediate() {
                             return Some((
                                 Player::Moving(moving.dest, moving.exact, moving.intermediates),
                                 false,

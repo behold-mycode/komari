@@ -152,18 +152,15 @@ pub fn update_up_jumping_context(
                 state,
                 |action| match action {
                     PlayerAction::AutoMob(_) => {
-                        if moving.completed
-                            && moving.is_destination_intermediate()
-                            && y_direction <= 0
-                        {
+                        if !moving.completed {
+                            return None;
+                        }
+                        if moving.is_destination_intermediate() && y_direction <= 0 {
                             let _ = context.keys.send_up(KeyKind::Up);
                             return Some((
                                 Player::Moving(moving.dest, moving.exact, moving.intermediates),
                                 false,
                             ));
-                        }
-                        if has_teleport_key && !moving.completed {
-                            return None;
                         }
 
                         let (x_distance, _) = moving.x_distance_direction_from(false, cur_pos);
