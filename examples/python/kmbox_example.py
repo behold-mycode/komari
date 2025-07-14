@@ -4,6 +4,7 @@ import pyautogui
 import time
 
 from random import Random
+from threading import Timer
 from concurrent import futures
 # The two imports below is generated from:
 # python -m grpc_tools.protoc --python_out=. --pyi_out=. --grpc_python_out=. -I../../backend/proto ../..
@@ -16,6 +17,7 @@ class KeyInput(KeyInputServicer):
     def __init__(self, keys_map: dict[Key, int]) -> None:
         super().__init__()
         self.keys_map = keys_map
+        self.timers_map = {}
         self.seed = None
 
     # This is the init function that is called each time the bot connects to your service.
@@ -133,18 +135,32 @@ class KeyInput(KeyInputServicer):
         # This is key down sleep milliseconds. It is generated automatically by the bot using the
         # above seed. You should use this delay and `time.sleep(delay)` on key down.
         key_down = request.down_ms / 1000.0
+        timer = self.timers_map.get(key)
 
-        kmNet.keydown(key)
-        time.sleep(key_down)
-        kmNet.keyup(key)
+        if timer is None or not timer.is_alive():
+            kmNet.keydown(key)
+            timer = Timer(key_down, lambda: kmNet.keyup(key))
+            timer.start()
+            self.timers_map[key] = timer
+
         return KeyResponse()
 
     def SendUp(self, request: KeyUpRequest, context):
-        kmNet.keyup(self.keys_map[request.key])
+        key = request.key
+        timer = self.timers_map.get(key)
+
+        if timer is None or not timer.is_alive():
+            kmNet.keyup(self.keys_map[key])
+
         return KeyUpResponse()
 
     def SendDown(self, request: KeyDownRequest, context):
-        kmNet.keydown(self.keys_map[request.key])
+        key = request.key
+        timer = self.timers_map.get(key)
+
+        if timer is None or not timer.is_alive():
+            kmNet.keydown(self.keys_map[key])
+
         return KeyDownResponse()
 
 

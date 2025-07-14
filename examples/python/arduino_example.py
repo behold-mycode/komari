@@ -3,6 +3,7 @@ import grpc
 import serial
 import time
 
+from threading import Timer
 from concurrent import futures
 # The two imports below is generated from:
 # python -m grpc_tools.protoc --python_out=. --pyi_out=. --grpc_python_out=. -I../../backend/proto ../..
@@ -21,6 +22,7 @@ class KeyInput(KeyInputServicer):
     def __init__(self, keys_map: dict[Key, int], serial: serial.Serial) -> None:
         super().__init__()
         self.keys_map = keys_map
+        self.timers_map = {}
         self.serial = serial
 
     def Init(self, request: KeyInitRequest, context):
@@ -58,19 +60,31 @@ class KeyInput(KeyInputServicer):
     def Send(self, request: KeyRequest, context):
         key = self.keys_map[request.key]
         key_down = request.down_ms / 1000.0
+        timer = self.timers_map.get(key)
 
-        self.serial.write(bytes([KEY_DOWN, key]))
-        time.sleep(key_down)
-        self.serial.write(bytes([KEY_UP, key]))
+        if timer is None or not timer.is_alive():
+            self.serial.write(bytes([KEY_DOWN, key]))
+            timer = Timer(key_down, lambda: self.serial.write(
+                bytes([KEY_UP, key])))
+            timer.start()
+            self.timers_map[key] = timer
 
         return KeyResponse()
 
     def SendUp(self, request: KeyUpRequest, context):
-        self.serial.write(bytes([KEY_UP, self.keys_map[request.key]]))
+        key = request.key
+        timer = self.timers_map.get(key)
+
+        if timer is None or not timer.is_alive():
+            self.serial.write(bytes([KEY_UP, self.keys_map[key]]))
         return KeyUpResponse()
 
     def SendDown(self, request: KeyDownRequest, context):
-        self.serial.write(bytes([KEY_DOWN, self.keys_map[request.key]]))
+        key = request.key
+        timer = self.timers_map.get(key)
+
+        if timer is None or not timer.is_alive():
+            self.serial.write(bytes([KEY_DOWN, self.keys_map[key]]))
         return KeyDownResponse()
 
 
