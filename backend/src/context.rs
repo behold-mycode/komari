@@ -8,7 +8,7 @@ use std::{
 };
 
 use dyn_clone::clone_box;
-#[cfg(test)]
+#[cfg(debug_assertions)]
 use log::debug;
 use opencv::{
     core::{Vector, VectorToVec},
