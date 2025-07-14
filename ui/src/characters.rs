@@ -622,6 +622,18 @@ fn SectionOthers(character_view: Memo<Character>, save_character: Callback<Chara
     rsx! {
         Section { name: "Others",
             div { class: "grid grid-cols-3 gap-4",
+                CharactersNumberU32Input {
+                    label: "Number of Pets (1-3)",
+                    disabled: character_view().id.is_none() || !character_view().feed_pet_key.enabled,
+                    on_value: move |num_pets| {
+                        save_character(Character {
+                            num_pets,
+                            ..character_view.peek().clone()
+                        });
+                    },
+                    maximum_value: Some(3),
+                    value: character_view().num_pets,
+                }
                 CharactersMillisInput {
                     label: "Feed pet every",
                     disabled: character_view().id.is_none(),
@@ -648,7 +660,6 @@ fn SectionOthers(character_view: Memo<Character>, save_character: Callback<Chara
                     },
                     value: character_view().feed_pet_key.enabled,
                 }
-                div {}
                 CharactersSelect::<PotionMode> {
                     label: "Potion mode",
                     disabled: character_view().id.is_none(),
@@ -659,21 +670,6 @@ fn SectionOthers(character_view: Memo<Character>, save_character: Callback<Chara
                         });
                     },
                     selected: character_view().potion_mode,
-                }
-                CharactersCheckbox {
-                    label: "Use potion",
-                    disabled: character_view().id.is_none(),
-                    on_value: move |enabled| {
-                        let character = character_view.peek().clone();
-                        save_character(Character {
-                            potion_key: KeyBindingConfiguration {
-                                enabled,
-                                ..character.potion_key
-                            },
-                            ..character
-                        });
-                    },
-                    value: character_view().potion_key.enabled,
                 }
                 match character_view().potion_mode {
                     PotionMode::EveryMillis(millis) => rsx! {
@@ -690,7 +686,6 @@ fn SectionOthers(character_view: Memo<Character>, save_character: Callback<Chara
                         }
                     },
                     PotionMode::Percentage(percent) => rsx! {
-                        div {}
                         CharactersPercentageInput {
                             label: "Use below health percentage",
                             disabled: character_view().id.is_none(),
@@ -716,7 +711,21 @@ fn SectionOthers(character_view: Memo<Character>, save_character: Callback<Chara
                         div {}
                     },
                 }
-
+                CharactersCheckbox {
+                    label: "Use potion",
+                    disabled: character_view().id.is_none(),
+                    on_value: move |enabled| {
+                        let character = character_view.peek().clone();
+                        save_character(Character {
+                            potion_key: KeyBindingConfiguration {
+                                enabled,
+                                ..character.potion_key
+                            },
+                            ..character
+                        });
+                    },
+                    value: character_view().potion_key.enabled,
+                }
                 CharactersSelect::<Class> {
                     label: "Link key timing class",
                     disabled: character_view().id.is_none(),
@@ -912,6 +921,26 @@ fn CharactersMillisInput(
     rsx! {
         MillisInput {
             label,
+            disabled,
+            on_value,
+            value,
+        }
+    }
+}
+
+#[component]
+fn CharactersNumberU32Input(
+    label: &'static str,
+    #[props(default = false)] disabled: bool,
+    on_value: EventHandler<u32>,
+    value: u32,
+    #[props(default = None)] maximum_value: Option<u32>,
+) -> Element {
+    rsx! {
+        NumberInputU32 {
+            label,
+            minimum_value: 1,
+            maximum_value,
             disabled,
             on_value,
             value,

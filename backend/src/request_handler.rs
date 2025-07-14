@@ -607,9 +607,9 @@ fn config_actions(character: &Character) -> Vec<Action> {
             wait_after_use_millis: 350,
             ..ActionKey::default()
         });
-        vec.push(feed_pet_action);
-        vec.push(feed_pet_action);
-        vec.push(feed_pet_action);
+        for _ in 0..character.num_pets {
+            vec.push(feed_pet_action);
+        }
     }
     if let KeyBindingConfiguration { key, enabled: true } = character.potion_key
         && let PotionMode::EveryMillis(millis) = character.potion_mode
