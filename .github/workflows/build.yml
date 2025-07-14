@@ -58,10 +58,9 @@ jobs:
           protoc-version: ${{ env.PROTOC_VERSION }}
           llvm-version: ${{ env.LLVM_VERSION }}
 
-      - run: |
-          cargo fmt --check
-          cargo clippy -- -D warnings
-          cargo test --verbose
+      - run: cargo fmt --check
+      - run: cargo clippy -- -D warnings
+      - run: cargo test --verbose
 
   build:
     runs-on: windows-latest
