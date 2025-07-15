@@ -624,7 +624,11 @@ fn SectionOthers(character_view: Memo<Character>, save_character: Callback<Chara
             div { class: "grid grid-cols-3 gap-4",
                 CharactersNumberU32Input {
                     label: "Number of Pets (1-3)",
-                    disabled: character_view().id.is_none() || !character_view().feed_pet_key.enabled,
+                    disabled: {
+                        let invalid_character = character_view().id.is_none();
+                        let feed_pet_disabled = !character_view().feed_pet_key.enabled;
+                        invalid_character && feed_pet_disabled
+                    },
                     on_value: move |num_pets| {
                         save_character(Character {
                             num_pets,

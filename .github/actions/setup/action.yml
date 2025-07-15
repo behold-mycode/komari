@@ -54,8 +54,10 @@ runs:
         cd ../
         cargo binstall dioxus-cli --no-confirm
 
-    - name: Install LLVM & protoc
+    - name: Install LLVM
       shell: pwsh
-      run: |
-        choco install -y protoc --version "${{ inputs.protoc-version }}"
-        choco install -y llvm --version "${{ inputs.llvm-version }}"
+      run: choco install -y llvm --version "${{ inputs.llvm-version }}"
+
+    - name: Install protoc
+      shell: pwsh
+      run: choco install -y protoc --version "${{ inputs.protoc-version }}"
