@@ -52,7 +52,7 @@ class KeyInputStub(object):
         self.SendUp = channel.unary_unary(
                 '/input.KeyInput/SendUp',
                 request_serializer=input__pb2.KeyUpRequest.SerializeToString,
-                response_deserializer=input__pb2.KeyDownResponse.FromString,
+                response_deserializer=input__pb2.KeyUpResponse.FromString,
                 _registered_method=True)
         self.SendDown = channel.unary_unary(
                 '/input.KeyInput/SendDown',
@@ -115,7 +115,7 @@ def add_KeyInputServicer_to_server(servicer, server):
             'SendUp': grpc.unary_unary_rpc_method_handler(
                     servicer.SendUp,
                     request_deserializer=input__pb2.KeyUpRequest.FromString,
-                    response_serializer=input__pb2.KeyDownResponse.SerializeToString,
+                    response_serializer=input__pb2.KeyUpResponse.SerializeToString,
             ),
             'SendDown': grpc.unary_unary_rpc_method_handler(
                     servicer.SendDown,
@@ -230,7 +230,7 @@ class KeyInput(object):
             target,
             '/input.KeyInput/SendUp',
             input__pb2.KeyUpRequest.SerializeToString,
-            input__pb2.KeyDownResponse.FromString,
+            input__pb2.KeyUpResponse.FromString,
             options,
             channel_credentials,
             insecure,

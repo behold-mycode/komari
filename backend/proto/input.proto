@@ -90,7 +90,7 @@ service KeyInput {
   rpc Init (KeyInitRequest) returns (KeyInitResponse);
   rpc SendMouse (MouseRequest) returns (MouseResponse);
   rpc Send (KeyRequest) returns (KeyResponse);
-  rpc SendUp (KeyUpRequest) returns (KeyDownResponse);
+  rpc SendUp (KeyUpRequest) returns (KeyUpResponse);
   rpc SendDown (KeyDownRequest) returns (KeyDownResponse);
 }
 
