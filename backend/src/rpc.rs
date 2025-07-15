@@ -5,7 +5,11 @@ use bit_vec::BitVec;
 use input::key_input_client::KeyInputClient;
 pub use input::{Coordinate, MouseAction};
 use input::{Key, KeyDownRequest, KeyInitRequest, KeyRequest, KeyUpRequest, MouseRequest};
+#[cfg(windows)]
 use platforms::windows::KeyKind;
+
+#[cfg(target_os = "macos")]
+use platforms::macos::KeyKind;
 use tokio::runtime::Handle;
 use tokio::task::block_in_place;
 use tokio::time::timeout;

@@ -5,8 +5,14 @@ use std::{any::Any, cell::RefCell};
 use anyhow::Result;
 #[cfg(test)]
 use mockall::automock;
+#[cfg(windows)]
 use platforms::windows::{
     self, BitBltCapture, Frame, Handle, KeyInputKind, KeyKind, Keys, WgcCapture, WindowBoxCapture,
+};
+
+#[cfg(target_os = "macos")]
+use platforms::macos::{
+    self, BitBltCapture, Frame, Handle, KeyKind, KeyInputKind, Keys, screenshot::ScreenshotCapture,
 };
 
 use crate::context::MS_PER_TICK_F32;
@@ -313,8 +319,14 @@ impl KeySender for DefaultKeySender {
 #[derive(Debug)]
 pub enum ImageCaptureKind {
     BitBlt(BitBltCapture),
+    #[cfg(windows)]
     Wgc(Option<WgcCapture>),
+    #[cfg(windows)]
     BitBltArea(WindowBoxCapture),
+    #[cfg(target_os = "macos")]
+    BitBltArea(ScreenshotCapture),
+    #[cfg(target_os = "macos")]
+    Screenshot(ScreenshotCapture),
 }
 
 /// A struct for managing different capture modes.
@@ -337,10 +349,16 @@ impl ImageCapture {
     pub fn grab(&mut self) -> Option<Frame> {
         match &mut self.kind {
             ImageCaptureKind::BitBlt(capture) => capture.grab().ok(),
+            #[cfg(windows)]
             ImageCaptureKind::Wgc(capture) => {
                 capture.as_mut().and_then(|capture| capture.grab().ok())
             }
+            #[cfg(windows)]
             ImageCaptureKind::BitBltArea(capture) => capture.grab().ok(),
+            #[cfg(target_os = "macos")]
+            ImageCaptureKind::BitBltArea(capture) => capture.grab().ok(),
+            #[cfg(target_os = "macos")]
+            ImageCaptureKind::Screenshot(capture) => capture.grab().ok(),
         }
     }
 
@@ -366,11 +384,45 @@ fn to_key_sender_kind_from(method: KeySenderMethod, seed: &[u8]) -> KeySenderKin
 #[inline]
 fn to_image_capture_kind_from(handle: Handle, mode: CaptureMode) -> ImageCaptureKind {
     match mode {
+        #[cfg(windows)]
         CaptureMode::BitBlt => ImageCaptureKind::BitBlt(BitBltCapture::new(handle, false)),
+        #[cfg(target_os = "macos")]
+        CaptureMode::BitBlt => ImageCaptureKind::BitBlt(BitBltCapture::new(handle).unwrap()),
+        #[cfg(windows)]
         CaptureMode::WindowsGraphicsCapture => {
             ImageCaptureKind::Wgc(WgcCapture::new(handle, MS_PER_TICK).ok())
         }
+        #[cfg(target_os = "macos")]
+        CaptureMode::WindowsGraphicsCapture => {
+            // Map Windows Graphics Capture to macOS Screenshot API
+            match ScreenshotCapture::new(handle) {
+                Ok(capture) => ImageCaptureKind::Screenshot(capture),
+                Err(e) => {
+                    log::warn!("Failed to create screenshot capture: {:?}, using default screen region", e);
+                    // Create a handle with safe default coordinates (smaller region to avoid screen bounds issues)
+                    let safe_handle = Handle::new("MapleStoryClass").with_coordinates(0, 0, 0, 1280, 720);
+                    ImageCaptureKind::Screenshot(ScreenshotCapture::new(safe_handle).unwrap_or_else(|_| {
+                        panic!("Failed to create screenshot capture even with default coordinates")
+                    }))
+                }
+            }
+        }
+        #[cfg(windows)]
         CaptureMode::BitBltArea => ImageCaptureKind::BitBltArea(WindowBoxCapture::default()),
+        #[cfg(target_os = "macos")]
+        CaptureMode::BitBltArea => {
+            match ScreenshotCapture::new(handle) {
+                Ok(capture) => ImageCaptureKind::BitBltArea(capture),
+                Err(e) => {
+                    log::warn!("Failed to create screenshot capture for BitBltArea: {:?}, using default screen region", e);
+                    // Create a handle with safe default coordinates (smaller region to avoid screen bounds issues)
+                    let safe_handle = Handle::new("MapleStoryClass").with_coordinates(0, 0, 0, 1280, 720);
+                    ImageCaptureKind::BitBltArea(ScreenshotCapture::new(safe_handle).unwrap_or_else(|_| {
+                        panic!("Failed to create screenshot capture even with default coordinates")
+                    }))
+                }
+            }
+        }
     }
 }
 
