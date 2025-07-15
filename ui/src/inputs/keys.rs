@@ -92,14 +92,30 @@ pub fn KeyInput(
                     has_error.set(false);
                 },
                 onkeydown: move |e: Event<KeyboardData>| async move {
+                    // Cross-platform WebView-safe keyboard event handling
                     e.prevent_default();
+                    e.stop_propagation(); // Prevent event bubbling (improvement from master)
+                    
                     if let Some(key) = map_key(e.key()) {
-                        if let Some(input) = input_element().as_ref() {
-                            let _ = input.set_focus(false).await;
+                        // Platform-specific focus handling to prevent WebView crashes
+                        #[cfg(target_os = "macos")]
+                        {
+                            // Skip the set_focus call on macOS to prevent WKWebView threading issues
+                            has_error.set(false);
+                            on_active(false);
+                            on_value(Some(key));
                         }
-                        has_error.set(false);
-                        on_active(false);
-                        on_value(Some(key));
+                        
+                        #[cfg(not(target_os = "macos"))]
+                        {
+                            // Keep original Windows behavior with focus management
+                            if let Some(input) = input_element().as_ref() {
+                                let _ = input.set_focus(false).await;
+                            }
+                            has_error.set(false);
+                            on_active(false);
+                            on_value(Some(key));
+                        }
                     } else {
                         has_error.set(true);
                     }
