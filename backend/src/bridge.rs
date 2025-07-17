@@ -452,8 +452,19 @@ fn to_image_capture_kind_from(handle: Handle, mode: CaptureMode, settings: &Sett
         #[cfg(target_os = "macos")]
         CaptureMode::BitBltArea => {
             // Use coordinates from settings for BitBltArea mode
+            // Automatically detect the best display for the given coordinates
+            let display_index = platforms::macos::find_display_for_coordinates(
+                settings.capture_x,
+                settings.capture_y,
+                1366, // Fixed MapleStory window width
+                768   // Fixed MapleStory window height
+            ).unwrap_or(0); // Fallback to primary display if detection fails
+            
+            log::info!("BitBltArea mode: Using coordinates ({}, {}) on display index {}", 
+                      settings.capture_x, settings.capture_y, display_index);
+            
             let configured_handle = handle.with_coordinates(
-                0, // display_index - default to primary display
+                display_index,
                 settings.capture_x,
                 settings.capture_y, 
                 1366, // Fixed MapleStory window width

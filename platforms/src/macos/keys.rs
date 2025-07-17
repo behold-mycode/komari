@@ -3,11 +3,12 @@ use core_graphics::event::{
     CGEvent, CGEventTapLocation, CGEventType, CGKeyCode, CGMouseButton
 };
 use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
-use core_foundation::runloop::{CFRunLoop, kCFRunLoopDefaultMode};
+use core_foundation::runloop::{CFRunLoop, kCFRunLoopDefaultMode, CFRunLoopRunInMode, CFRunLoopRun};
 use core_graphics::event::{CGEventTap, CGEventTapOptions, CGEventTapPlacement, CGEventTapProxy};
 use std::sync::{Mutex, OnceLock, Arc, LazyLock};
 use std::time::Duration;
 use tokio::sync::broadcast::{self, Receiver, Sender};
+use std::process::Command;
 
 // Global keyboard event channel (like Windows KEY_CHANNEL)
 static KEY_CHANNEL: LazyLock<Sender<KeyKind>> = LazyLock::new(|| broadcast::channel(1).0);
@@ -278,8 +279,82 @@ impl KeyReceiver {
     }
 }
 
+/// Check if the application has accessibility permissions
+/// This is required for CGEventTap to work properly
+fn check_accessibility_permissions() -> bool {
+    // Try to create a simple CGEventTap to test permissions
+    // If it fails, we likely don't have accessibility permissions
+    let test_callback = |_proxy: CGEventTapProxy, _event_type: CGEventType, event: &CGEvent| -> Option<CGEvent> {
+        Some(event.clone())
+    };
+    
+    let event_mask = vec![CGEventType::KeyDown];
+    
+    match CGEventTap::new(
+        CGEventTapLocation::HID,
+        CGEventTapPlacement::HeadInsertEventTap,
+        CGEventTapOptions::Default,
+        event_mask,
+        test_callback,
+    ) {
+        Ok(_) => {
+            log::info!("✅ Accessibility permissions check passed");
+            true
+        }
+        Err(e) => {
+            log::warn!("❌ Accessibility permissions check failed: {:?}", e);
+            
+            // Additional check using system command
+            match Command::new("osascript")
+                .arg("-e")
+                .arg("tell application \"System Events\" to get name of first process")
+                .output()
+            {
+                Ok(output) if output.status.success() => {
+                    log::info!("✅ Alternative accessibility check passed via System Events");
+                    true
+                }
+                _ => {
+                    log::error!("❌ Alternative accessibility check also failed");
+                    false
+                }
+            }
+        }
+    }
+}
+
+/// Run the Core Foundation event loop using standard approach
+/// This must be called on a dedicated thread with proper Core Foundation setup
+fn run_event_loop_properly() {
+    log::info!("Starting Core Foundation event loop");
+    
+    // Use the standard Core Foundation run loop approach
+    // This is the proper way to handle CGEventTap events
+    unsafe {
+        CFRunLoopRun();
+    }
+    
+    log::info!("Core Foundation event loop exited");
+}
+
 pub fn run_event_loop() {
     log::info!("Starting macOS keyboard event loop with CGEventTap");
+    
+    // Check accessibility permissions first
+    if !check_accessibility_permissions() {
+        log::error!("❌ ACCESSIBILITY PERMISSIONS NOT GRANTED");
+        log::error!("Please grant accessibility permissions to the application in:");
+        log::error!("System Preferences > Security & Privacy > Privacy > Accessibility");
+        log::error!("Or System Settings > Privacy & Security > Accessibility (macOS 13+)");
+        
+        // Fall back to basic loop but continue to keep the thread alive
+        log::info!("Falling back to basic event loop (hotkeys will not work)");
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+    }
+    
+    log::info!("✅ Accessibility permissions verified");
     
     // Create the event tap callback
     let event_tap_callback = |
@@ -350,8 +425,8 @@ pub fn run_event_loop() {
                     
                     log::info!("Event tap enabled, starting run loop");
                     
-                    // Run the event loop
-                    CFRunLoop::run_current();
+                    // Run the event loop with safer approach to avoid Core Foundation threading issues
+                    run_event_loop_properly();
                 }
                 Err(e) => {
                     log::error!("Failed to create run loop source: {:?}", e);

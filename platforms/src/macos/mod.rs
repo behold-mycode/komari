@@ -14,6 +14,7 @@ pub mod screenshot;
 
 pub use {bitblt::*, error::*, handle::*, keys::*, screenshot::*};
 pub use keys::{client_to_monitor_or_frame, KeyInputKind, KeysManager as Keys, KeyReceiver};
+pub use handle::find_display_for_coordinates;
 
 #[derive(Clone, Debug)]
 pub struct Frame {

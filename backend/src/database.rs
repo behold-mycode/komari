@@ -18,12 +18,39 @@ use strum::{Display, EnumIter, EnumString};
 use crate::pathing;
 
 static CONNECTION: LazyLock<Mutex<Connection>> = LazyLock::new(|| {
-    let path = env::current_exe()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .join("local.db")
-        .to_path_buf();
+    // Use a consistent database location regardless of build mode (debug/release)
+    // Look for Cargo.toml to find project root, fallback to current directory
+    let mut current_dir = env::current_dir().expect("Failed to get current directory");
+    
+    // Try to find project root by looking for Cargo.toml
+    let mut project_root = None;
+    for _ in 0..10 { // Search up to 10 levels up
+        if current_dir.join("Cargo.toml").exists() {
+            project_root = Some(current_dir.clone());
+            break;
+        }
+        if let Some(parent) = current_dir.parent() {
+            current_dir = parent.to_path_buf();
+        } else {
+            break;
+        }
+    }
+    
+    let db_dir = match project_root {
+        Some(root) => root,
+        None => {
+            // Fallback: use the directory containing the executable
+            env::current_exe()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .to_path_buf()
+        }
+    };
+    
+    let path = db_dir.join("local.db");
+    log::info!("Using database location: {}", path.display());
+    
     let conn = Connection::open(path.to_str().unwrap()).expect("failed to open local.db");
     conn.execute_batch(
         r#"
@@ -231,21 +258,21 @@ fn toggle_actions_key_default() -> KeyBindingConfiguration {
 fn platform_start_key_default() -> KeyBindingConfiguration {
     KeyBindingConfiguration {
         key: KeyBinding::J,
-        enabled: false,
+        enabled: true,
     }
 }
 
 fn platform_end_key_default() -> KeyBindingConfiguration {
     KeyBindingConfiguration {
         key: KeyBinding::K,
-        enabled: false,
+        enabled: true,
     }
 }
 
 fn platform_add_key_default() -> KeyBindingConfiguration {
     KeyBindingConfiguration {
         key: KeyBinding::L,
-        enabled: false,
+        enabled: true,
     }
 }
 

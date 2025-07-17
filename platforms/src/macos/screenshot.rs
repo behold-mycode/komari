@@ -30,21 +30,53 @@ impl ScreenshotCapture {
         let all_screens = Screen::all().map_err(|_| Error::WindowNotFound)?;
         let mut capture_valid = false;
         
+        // Calculate total desktop bounds for better multi-monitor support
+        let total_width = all_screens.iter()
+            .map(|s| s.display_info.width as i32)
+            .max()
+            .unwrap_or(1920);
+        let total_height = all_screens.iter()
+            .map(|s| s.display_info.height as i32)
+            .max()
+            .unwrap_or(1080);
+        
+        // For multi-monitor setups, be more permissive with coordinate validation
+        // Check if coordinates could be valid in an extended desktop setup
         for screen in all_screens.iter() {
             let display_info = &screen.display_info;
             
-            // Check if the capture area fits within this screen
+            // Check if the capture area fits within this screen (traditional approach)
             if handle.x >= 0 && handle.y >= 0 && 
                handle.x + handle.width <= display_info.width as i32 &&
                handle.y + handle.height <= display_info.height as i32 {
                 capture_valid = true;
+                log::info!("Coordinates ({}, {}) fit within screen {}x{}", 
+                          handle.x, handle.y, display_info.width, display_info.height);
                 break;
             }
         }
         
+        // If not valid in individual screens, check if it might be valid in extended desktop
         if !capture_valid {
-            log::warn!("Capture coordinates ({}, {}) with size {}x{} do not fit within any available screen",
+            // More permissive validation for multi-monitor absolute coordinates
+            // Allow coordinates that might be valid in an extended desktop setup
+            let max_reasonable_x = total_width * 2; // Allow for wide multi-monitor setups
+            let max_reasonable_y = total_height * 2; // Allow for stacked monitors
+            
+            if handle.x >= 0 && handle.y >= 0 && 
+               handle.x < max_reasonable_x && handle.y < max_reasonable_y &&
+               handle.width > 0 && handle.height > 0 && 
+               handle.width <= 3840 && handle.height <= 2160 { // Reasonable capture size limits
+                capture_valid = true;
+                log::info!("Coordinates ({}, {}) accepted as potentially valid extended desktop coordinates", 
+                          handle.x, handle.y);
+            }
+        }
+        
+        if !capture_valid {
+            log::warn!("Capture coordinates ({}, {}) with size {}x{} do not fit within any available screen configuration",
                       handle.x, handle.y, handle.width, handle.height);
+            log::warn!("Available screens: {:?}", all_screens.iter().map(|s| format!("{}x{}", s.display_info.width, s.display_info.height)).collect::<Vec<_>>());
             return Err(Error::InvalidWindowSize);
         }
 
@@ -64,6 +96,17 @@ impl ScreenshotCapture {
         let all_screens = Screen::all().map_err(|_| Error::WindowNotFound)?;
         let mut capture_valid = false;
         
+        // Calculate total desktop bounds for better multi-monitor support
+        let total_width = all_screens.iter()
+            .map(|s| s.display_info.width as i32)
+            .max()
+            .unwrap_or(1920);
+        let total_height = all_screens.iter()
+            .map(|s| s.display_info.height as i32)
+            .max()
+            .unwrap_or(1080);
+        
+        // Check if coordinates fit within individual screens first
         for screen in all_screens.iter() {
             let display_info = &screen.display_info;
             
@@ -72,13 +115,31 @@ impl ScreenshotCapture {
                x + width <= display_info.width as i32 &&
                y + height <= display_info.height as i32 {
                 capture_valid = true;
+                log::info!("New coordinates ({}, {}) fit within screen {}x{}", 
+                          x, y, display_info.width, display_info.height);
                 break;
             }
         }
         
+        // If not valid in individual screens, check extended desktop bounds
         if !capture_valid {
-            log::warn!("New capture coordinates ({}, {}) with size {}x{} do not fit within any available screen",
+            let max_reasonable_x = total_width * 2; // Allow for wide multi-monitor setups
+            let max_reasonable_y = total_height * 2; // Allow for stacked monitors
+            
+            if x >= 0 && y >= 0 && 
+               x < max_reasonable_x && y < max_reasonable_y &&
+               width > 0 && height > 0 && 
+               width <= 3840 && height <= 2160 { // Reasonable capture size limits
+                capture_valid = true;
+                log::info!("New coordinates ({}, {}) accepted as potentially valid extended desktop coordinates", 
+                          x, y);
+            }
+        }
+        
+        if !capture_valid {
+            log::warn!("New capture coordinates ({}, {}) with size {}x{} do not fit within any available screen configuration",
                       x, y, width, height);
+            log::warn!("Available screens: {:?}", all_screens.iter().map(|s| format!("{}x{}", s.display_info.width, s.display_info.height)).collect::<Vec<_>>());
             return Err(Error::InvalidWindowSize);
         }
         

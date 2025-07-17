@@ -402,10 +402,6 @@ impl RequestHandler for DefaultRequestHandler<'_> {
     }
 
     fn on_select_capture_handle(&mut self, index: Option<usize>) {
-        if matches!(self.settings.capture_mode, CaptureMode::BitBltArea) {
-            return;
-        }
-
         let handle = index
             .and_then(|index| self.capture_handles.get(index))
             .map(|(_, handle)| *handle);
@@ -414,12 +410,20 @@ impl RequestHandler for DefaultRequestHandler<'_> {
         *self.selected_capture_handle = handle;
         self.image_capture
             .set_mode(handle_or_default, self.settings.capture_mode, &self.settings);
-        *self.key_receiver = KeyReceiver::new(handle_or_default, KeyInputKind::Fixed);
+        
+        // For BitBltArea, use Foreground key input kind, otherwise use Fixed
+        let key_input_kind = if matches!(self.settings.capture_mode, CaptureMode::BitBltArea) {
+            KeyInputKind::Foreground
+        } else {
+            KeyInputKind::Fixed
+        };
+        
+        *self.key_receiver = KeyReceiver::new(handle_or_default, key_input_kind);
         match self.settings.input_method {
             InputMethod::Default => {
                 self.context.keys.set_method(KeySenderMethod::Default(
                     handle_or_default,
-                    KeyInputKind::Fixed,
+                    key_input_kind,
                 ));
             }
             InputMethod::Rpc => {

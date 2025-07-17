@@ -19,6 +19,58 @@ mod input {
     tonic::include_proto!("input");
 }
 
+/// Format user input into a valid gRPC server URL
+/// Handles common input patterns:
+/// - "5001" -> "http://localhost:5001"
+/// - "localhost:5001" -> "http://localhost:5001" 
+/// - "192.168.1.100:5001" -> "http://192.168.1.100:5001"
+/// - "http://localhost:5001" -> "http://localhost:5001" (unchanged)
+fn format_rpc_url(input: &str) -> Result<String, Error> {
+    let trimmed = input.trim();
+    
+    if trimmed.is_empty() {
+        bail!("RPC server URL cannot be empty");
+    }
+    
+    // If it already has a protocol, use as-is
+    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        return Ok(trimmed.to_string());
+    }
+    
+    // Check if it's just a port number
+    match trimmed.parse::<u16>() {
+        std::result::Result::Ok(port) => {
+            if port > 0 && port <= 65535 {
+                return std::result::Result::Ok(format!("http://localhost:{}", port));
+            } else {
+                bail!("Invalid port number: {}. Must be between 1 and 65535", port);
+            }
+        }
+        std::result::Result::Err(_) => {
+            // Not a port number, continue to next check
+        }
+    }
+    
+    // Check if it's host:port format (validate port part)
+    if let Some((host, port_str)) = trimmed.rsplit_once(':') {
+        match port_str.parse::<u16>() {
+            std::result::Result::Ok(port) => {
+                if port > 0 && port <= 65535 {
+                    return std::result::Result::Ok(format!("http://{}:{}", host, port));
+                } else {
+                    bail!("Invalid port number: {}. Must be between 1 and 65535", port);
+                }
+            }
+            std::result::Result::Err(_) => {
+                // Port part is not a valid number, fall through to error
+            }
+        }
+    }
+    
+    // If none of the above patterns match, it's probably an invalid format
+    bail!("Invalid RPC server URL format: '{}'. Expected formats: '5001', 'localhost:5001', or 'http://localhost:5001'", trimmed);
+}
+
 #[derive(Debug)]
 pub struct KeysService {
     client: KeyInputClient<Channel>,
@@ -30,17 +82,25 @@ pub struct KeysService {
 impl KeysService {
     pub fn connect<D>(dest: D) -> Result<Self, Error>
     where
-        D: TryInto<Endpoint>,
         D: AsRef<str>,
-        D::Error: std::error::Error + Send + Sync + 'static,
     {
-        let endpoint = TryInto::<Endpoint>::try_into(dest.as_ref().to_string())?;
+        let input_url = dest.as_ref();
+        let formatted_url = format_rpc_url(input_url)?;
+        
+        log::info!("Attempting to connect to RPC server: {} (formatted from: {})", formatted_url, input_url);
+        
+        let endpoint = TryInto::<Endpoint>::try_into(formatted_url.clone())
+            .map_err(|e| anyhow::anyhow!("Invalid RPC server URL '{}': {}", formatted_url, e))?;
+            
         let client = block_future(async move {
             timeout(Duration::from_secs(3), KeyInputClient::connect(endpoint)).await
-        })??;
+        }).map_err(|e| anyhow::anyhow!("Failed to connect to RPC server '{}': {}", formatted_url, e))??;
+        
+        log::info!("Successfully connected to RPC server: {}", formatted_url);
+        
         Ok(Self {
             client,
-            url: dest.as_ref().to_string(),
+            url: formatted_url,
             key_down: BitVec::from_elem(128, false),
             mouse_coordinate: Coordinate::Screen,
         })

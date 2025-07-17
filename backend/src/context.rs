@@ -216,10 +216,19 @@ fn update_loop() {
     let mut image_capture = ImageCapture::new(handle, settings.capture_mode, &settings);
     if let ImageCaptureKind::BitBltArea(capture) = image_capture.kind() {
         key_receiver = KeyReceiver::new(capture.handle(), KeyInputKind::Foreground);
-        keys.set_method(KeySenderMethod::Default(
-            capture.handle(),
-            KeyInputKind::Foreground,
-        ));
+        // Only override to Default if user chose Default input method, preserve RPC choice
+        if let InputMethod::Default = settings.input_method {
+            keys.set_method(KeySenderMethod::Default(
+                capture.handle(),
+                KeyInputKind::Foreground,
+            ));
+        } else {
+            // For RPC mode, update the handle but preserve RPC method
+            keys.set_method(KeySenderMethod::Rpc(
+                capture.handle(),
+                settings.input_method_rpc_server_url.clone(),
+            ));
+        }
     }
 
     let settings = Rc::new(RefCell::new(settings));
