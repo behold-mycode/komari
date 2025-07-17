@@ -1,6 +1,52 @@
+# Rust build artifacts
 /target
+
+# Large binary dependencies (should be downloaded via build script)
+backend/resources/onnxruntime-*/
+*.tgz
+
+# Node.js dependencies  
+node_modules/
+ui/node_modules/
+package-lock.json
+
+# Runtime generated files
+*.log
+*.db
+local.db
+log.txt
+
+# macOS system files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.settings/
+
+# Test and development files
+stress_test/
+backend/tests/
+platforms/tests/
+proper_test*
+
+# Legacy test files (keep these specific ones)
 test_input.rs
 test_maplestory.rs
 test_output.log
 stress_test.rs
-run_komari.sh
+
+# Launcher scripts (removing from ignore - these are useful)
+# run_komari.sh
+# setup_alias.sh  
+# create_app.sh
