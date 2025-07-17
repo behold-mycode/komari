@@ -1,7 +1,10 @@
 use std::cmp::Ordering;
 
 use opencv::core::Point;
+#[cfg(windows)]
 use platforms::windows::KeyKind;
+#[cfg(target_os = "macos")]
+use platforms::macos::KeyKind;
 
 use super::{
     PingPongDirection, PlayerActionAutoMob, PlayerState, Timeout,
@@ -465,7 +468,10 @@ fn random_wait_ticks(wait_base_ticks: u32, wait_random_range: u32) -> u32 {
 mod tests {
     use std::assert_matches::assert_matches;
 
-    use platforms::windows::KeyKind;
+    #[cfg(windows)]
+use platforms::windows::KeyKind;
+#[cfg(target_os = "macos")]
+use platforms::macos::KeyKind;
 
     use crate::{
         ActionKeyDirection, ActionKeyWith, KeyBinding, LinkKeyBinding,

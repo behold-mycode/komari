@@ -1,4 +1,7 @@
+#[cfg(windows)]
 use platforms::windows::KeyKind;
+#[cfg(target_os = "macos")]
+use platforms::macos::KeyKind;
 
 use super::{
     Player, PlayerState,

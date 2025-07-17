@@ -3,7 +3,10 @@ use std::{collections::HashMap, range::Range};
 use anyhow::Result;
 use log::debug;
 use opencv::core::{Point, Rect};
+#[cfg(windows)]
 use platforms::windows::KeyKind;
+#[cfg(target_os = "macos")]
+use platforms::macos::KeyKind;
 
 use super::{
     DOUBLE_JUMP_THRESHOLD, JUMP_THRESHOLD, MOVE_TIMEOUT, Player, PlayerAction,

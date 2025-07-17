@@ -5,15 +5,21 @@ use std::{any::Any, cell::RefCell};
 use anyhow::Result;
 #[cfg(test)]
 use mockall::automock;
+#[cfg(windows)]
 use platforms::windows::{
     self, BitBltCapture, Frame, Handle, KeyInputKind, KeyKind, Keys, WgcCapture, WindowBoxCapture,
+};
+
+#[cfg(target_os = "macos")]
+use platforms::macos::{
+    self, BitBltCapture, Frame, Handle, KeyKind, KeyInputKind, Keys, screenshot::ScreenshotCapture,
 };
 
 use crate::context::MS_PER_TICK_F32;
 use crate::database::Seeds;
 use crate::rng::Rng;
 use crate::rpc;
-use crate::{CaptureMode, context::MS_PER_TICK, rpc::KeysService};
+use crate::{CaptureMode, context::MS_PER_TICK, rpc::KeysService, database::Settings};
 
 /// Base mean in milliseconds to generate a pair from.
 const BASE_MEAN_MS_DELAY: f32 = 100.0;
@@ -256,12 +262,12 @@ impl KeySender for DefaultKeySender {
             KeySenderKind::Rpc(handle, service) => {
                 if let Some(cell) = service {
                     let mut borrow = cell.borrow_mut();
-                    let coordinates = windows::client_to_monitor_or_frame(
-                        *handle,
-                        x,
-                        y,
-                        matches!(borrow.mouse_coordinate(), rpc::Coordinate::Screen),
-                    )?;
+                    let coordinates = {
+                        #[cfg(windows)]
+                        { windows::client_to_monitor_or_frame(*handle, x, y, matches!(borrow.mouse_coordinate(), rpc::Coordinate::Screen))? }
+                        #[cfg(target_os = "macos")]
+                        { macos::client_to_monitor_or_frame(*handle, x, y, matches!(borrow.mouse_coordinate(), rpc::Coordinate::Screen))? }
+                    };
                     let action = match action {
                         MouseAction::Move => rpc::MouseAction::Move,
                         MouseAction::Click => rpc::MouseAction::Click,
@@ -279,10 +285,23 @@ impl KeySender for DefaultKeySender {
                 Ok(())
             }
             KeySenderKind::Default(keys) => {
-                let action = match action {
-                    MouseAction::Move => windows::MouseAction::Move,
-                    MouseAction::Click => windows::MouseAction::Click,
-                    MouseAction::Scroll => windows::MouseAction::Scroll,
+                let action = {
+                    #[cfg(windows)]
+                    {
+                        match action {
+                            MouseAction::Move => windows::MouseAction::Move,
+                            MouseAction::Click => windows::MouseAction::Click,
+                            MouseAction::Scroll => windows::MouseAction::Scroll,
+                        }
+                    }
+                    #[cfg(target_os = "macos")]
+                    {
+                        match action {
+                            MouseAction::Move => macos::MouseAction::Move,
+                            MouseAction::Click => macos::MouseAction::Click,
+                            MouseAction::Scroll => macos::MouseAction::Scroll,
+                        }
+                    }
                 };
                 keys.send_mouse(x, y, action)?;
                 Ok(())
@@ -313,8 +332,14 @@ impl KeySender for DefaultKeySender {
 #[derive(Debug)]
 pub enum ImageCaptureKind {
     BitBlt(BitBltCapture),
+    #[cfg(windows)]
     Wgc(Option<WgcCapture>),
+    #[cfg(windows)]
     BitBltArea(WindowBoxCapture),
+    #[cfg(target_os = "macos")]
+    BitBltArea(ScreenshotCapture),
+    #[cfg(target_os = "macos")]
+    Screenshot(ScreenshotCapture),
 }
 
 /// A struct for managing different capture modes.
@@ -324,9 +349,9 @@ pub struct ImageCapture {
 }
 
 impl ImageCapture {
-    pub fn new(handle: Handle, mode: CaptureMode) -> Self {
+    pub fn new(handle: Handle, mode: CaptureMode, settings: &Settings) -> Self {
         Self {
-            kind: to_image_capture_kind_from(handle, mode),
+            kind: to_image_capture_kind_from(handle, mode, settings),
         }
     }
 
@@ -337,15 +362,21 @@ impl ImageCapture {
     pub fn grab(&mut self) -> Option<Frame> {
         match &mut self.kind {
             ImageCaptureKind::BitBlt(capture) => capture.grab().ok(),
+            #[cfg(windows)]
             ImageCaptureKind::Wgc(capture) => {
                 capture.as_mut().and_then(|capture| capture.grab().ok())
             }
+            #[cfg(windows)]
             ImageCaptureKind::BitBltArea(capture) => capture.grab().ok(),
+            #[cfg(target_os = "macos")]
+            ImageCaptureKind::BitBltArea(capture) => capture.grab().ok(),
+            #[cfg(target_os = "macos")]
+            ImageCaptureKind::Screenshot(capture) => capture.grab().ok(),
         }
     }
 
-    pub fn set_mode(&mut self, handle: Handle, mode: CaptureMode) {
-        self.kind = to_image_capture_kind_from(handle, mode);
+    pub fn set_mode(&mut self, handle: Handle, mode: CaptureMode, settings: &Settings) {
+        self.kind = to_image_capture_kind_from(handle, mode, settings);
     }
 }
 
@@ -364,13 +395,105 @@ fn to_key_sender_kind_from(method: KeySenderMethod, seed: &[u8]) -> KeySenderKin
 }
 
 #[inline]
-fn to_image_capture_kind_from(handle: Handle, mode: CaptureMode) -> ImageCaptureKind {
+fn to_image_capture_kind_from(handle: Handle, mode: CaptureMode, settings: &Settings) -> ImageCaptureKind {
     match mode {
+        #[cfg(windows)]
         CaptureMode::BitBlt => ImageCaptureKind::BitBlt(BitBltCapture::new(handle, false)),
+        #[cfg(target_os = "macos")]
+        CaptureMode::BitBlt => {
+            match BitBltCapture::new(handle) {
+                Ok(capture) => ImageCaptureKind::BitBlt(capture),
+                Err(e) => {
+                    log::warn!("Failed to create BitBltCapture with handle coordinates: {:?}", e);
+                    log::info!("Falling back to safe default coordinates (0, 0, 1366, 768)");
+                    let fallback_handle = handle.with_coordinates(0, 0, 0, 1366, 768);
+                    match BitBltCapture::new(fallback_handle) {
+                        Ok(capture) => ImageCaptureKind::BitBlt(capture),
+                        Err(fallback_e) => {
+                            log::error!("Fallback BitBltCapture also failed: {:?}", fallback_e);
+                            // Return a minimal capture that won't crash the backend
+                            match BitBltCapture::new_with_coordinates(0, 0, 0, 1366, 768) {
+                                Ok(capture) => ImageCaptureKind::BitBlt(capture),
+                                Err(coord_e) => {
+                                    log::error!("Failed to create BitBltCapture with coordinates: {:?}", coord_e);
+                                    panic!("Cannot create any BitBlt capture - display system may be unavailable")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        #[cfg(windows)]
         CaptureMode::WindowsGraphicsCapture => {
             ImageCaptureKind::Wgc(WgcCapture::new(handle, MS_PER_TICK).ok())
         }
+        #[cfg(target_os = "macos")]
+        CaptureMode::WindowsGraphicsCapture => {
+            // Map Windows Graphics Capture to macOS Screenshot API
+            match ScreenshotCapture::new(handle) {
+                Ok(capture) => ImageCaptureKind::Screenshot(capture),
+                Err(e) => {
+                    log::warn!("Failed to create screenshot capture: {:?}, using default screen region", e);
+                    // Create a handle with safe default coordinates (smaller region to avoid screen bounds issues)
+                    let safe_handle = Handle::new("MapleStoryClass").with_coordinates(0, 0, 0, 1280, 720);
+                    match ScreenshotCapture::new(safe_handle) {
+                        Ok(capture) => ImageCaptureKind::Screenshot(capture),
+                        Err(safe_e) => {
+                            log::error!("Failed to create screenshot capture even with default coordinates: {:?}", safe_e);
+                            panic!("Cannot create any screenshot capture - display system may be unavailable")
+                        }
+                    }
+                }
+            }
+        }
+        #[cfg(windows)]
         CaptureMode::BitBltArea => ImageCaptureKind::BitBltArea(WindowBoxCapture::default()),
+        #[cfg(target_os = "macos")]
+        CaptureMode::BitBltArea => {
+            // Use coordinates from settings for BitBltArea mode
+            let configured_handle = handle.with_coordinates(
+                0, // display_index - default to primary display
+                settings.capture_x,
+                settings.capture_y, 
+                1366, // Fixed MapleStory window width
+                768   // Fixed MapleStory window height
+            );
+            
+            match ScreenshotCapture::new(configured_handle) {
+                Ok(capture) => ImageCaptureKind::BitBltArea(capture),
+                Err(e) => {
+                    log::warn!("Failed to create screenshot capture for BitBltArea with coordinates ({}, {}): {:?}", 
+                              settings.capture_x, settings.capture_y, e);
+                    log::info!("Falling back to safe default coordinates (0, 0, 1280, 720)");
+                    // Create a handle with safe default coordinates (smaller region to avoid screen bounds issues)
+                    let safe_handle = Handle::new("MapleStoryClass").with_coordinates(0, 0, 0, 1280, 720);
+                    match ScreenshotCapture::new(safe_handle) {
+                        Ok(capture) => ImageCaptureKind::BitBltArea(capture),
+                        Err(fallback_e) => {
+                            log::error!("Fallback screenshot capture also failed: {:?}", fallback_e);
+                            log::info!("Creating minimal capture that won't crash the backend");
+                            // Return a minimal capture that won't crash the backend
+                            match ScreenshotCapture::new(
+                                Handle::new("MapleStoryClass").with_coordinates(0, 0, 0, 800, 600)
+                            ) {
+                                Ok(capture) => ImageCaptureKind::BitBltArea(capture),
+                                Err(minimal_e) => {
+                                    log::error!("All screenshot capture attempts failed: {:?}", minimal_e);
+                                    log::error!("This may indicate a serious display or permissions issue");
+                                    // Return the last working capture or create a dummy one
+                                    ImageCaptureKind::BitBltArea(ScreenshotCapture::new(
+                                        Handle::new("MapleStoryClass").with_coordinates(0, 0, 0, 100, 100)
+                                    ).unwrap_or_else(|_| {
+                                        panic!("Complete failure: cannot create any screenshot capture")
+                                    }))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

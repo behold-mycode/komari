@@ -10,7 +10,10 @@ use jump::update_jumping_context;
 use moving::{MOVE_TIMEOUT, Moving, MovingIntermediates, update_moving_context};
 use opencv::core::Point;
 use panic::update_panicking_context;
+#[cfg(windows)]
 use platforms::windows::KeyKind;
+#[cfg(target_os = "macos")]
+use platforms::macos::KeyKind;
 use solve_rune::{SolvingRune, update_solving_rune_context};
 use stall::update_stalling_context;
 use state::LastMovement;

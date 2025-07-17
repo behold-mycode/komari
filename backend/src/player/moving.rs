@@ -2,7 +2,10 @@ use std::ops::Range;
 
 use log::{debug, info};
 use opencv::core::Point;
+#[cfg(windows)]
 use platforms::windows::KeyKind;
+#[cfg(target_os = "macos")]
+use platforms::macos::KeyKind;
 
 use super::{
     GRAPPLING_MAX_THRESHOLD, JUMP_THRESHOLD, Player, PlayerState,

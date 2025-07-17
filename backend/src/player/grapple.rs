@@ -132,7 +132,10 @@ fn stopping_threshold(velocity: f32) -> i32 {
 mod tests {
     use mockall::predicate::eq;
     use opencv::core::Point;
-    use platforms::windows::KeyKind;
+    #[cfg(windows)]
+use platforms::windows::KeyKind;
+#[cfg(target_os = "macos")]
+use platforms::macos::KeyKind;
 
     use super::*;
     use crate::bridge::MockKeySender;

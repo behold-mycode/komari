@@ -4,7 +4,10 @@ use opencv::{
     boxed_ref::BoxedRef,
     core::{_InputArray, CV_8UC4, Mat, MatTraitConst, ToInputArray},
 };
+#[cfg(windows)]
 use platforms::windows::Frame;
+#[cfg(target_os = "macos")]
+use platforms::macos::Frame;
 
 // A Mat that owns the external buffer.
 #[derive(Debug)]

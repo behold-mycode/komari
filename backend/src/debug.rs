@@ -22,7 +22,10 @@ use opencv::{
     highgui::{imshow, wait_key},
     imgcodecs::imwrite_def,
 };
+#[cfg(windows)]
 use platforms::windows::KeyKind;
+#[cfg(target_os = "macos")]
+use platforms::macos::KeyKind;
 use rand::distr::{Alphanumeric, SampleString};
 
 static DATASET_DIR: LazyLock<PathBuf> = LazyLock::new(|| {

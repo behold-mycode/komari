@@ -2,7 +2,10 @@ use std::cmp::Ordering;
 
 use log::debug;
 use opencv::core::{Point, Rect};
+#[cfg(windows)]
 use platforms::windows::KeyKind;
+#[cfg(target_os = "macos")]
+use platforms::macos::KeyKind;
 
 use super::{
     PingPongDirection, Player, PlayerAction, PlayerActionKey, PlayerState,
@@ -435,7 +438,10 @@ mod tests {
 
     use anyhow::Ok;
     use opencv::core::{Point, Rect};
-    use platforms::windows::KeyKind;
+    #[cfg(windows)]
+use platforms::windows::KeyKind;
+#[cfg(target_os = "macos")]
+use platforms::macos::KeyKind;
 
     use super::{on_ping_pong_use_key_action, update_double_jumping_context};
     use crate::{

@@ -1,1 +1,6 @@
 /target
+test_input.rs
+test_maplestory.rs
+test_output.log
+stress_test.rs
+run_komari.sh

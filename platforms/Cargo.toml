@@ -9,6 +9,8 @@ tokio = { workspace = true }
 bit-vec = "0.8"
 tao = "0.33.0"
 softbuffer = "0.4.6"
+anyhow = "1.0.98"
+log = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.61.3", features = [
@@ -32,3 +34,8 @@ windows = { version = "0.61.3", features = [
 
 [target.'cfg(windows)'.build-dependencies]
 tauri-winres = "0.3.1"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+screenshots = "0.8"
+core-graphics = "0.23"
+core-foundation = "0.9"

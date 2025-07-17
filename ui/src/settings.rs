@@ -122,6 +122,37 @@ fn SectionCapture(
                     selected: settings_view().capture_mode,
                 }
             }
+            // Show coordinate inputs when BitBltArea mode is selected
+            if settings_view().capture_mode == CaptureMode::BitBltArea {
+                div { class: "grid grid-cols-2 gap-3 mt-2",
+                    SettingsTextInput {
+                        text_label: "Capture X coordinate",
+                        button_label: "Update",
+                        on_value: move |capture_x: String| {
+                            if let Ok(x) = capture_x.parse::<i32>() {
+                                save_settings(SettingsData {
+                                    capture_x: x,
+                                    ..settings_view.peek().clone()
+                                });
+                            }
+                        },
+                        value: settings_view().capture_x.to_string(),
+                    }
+                    SettingsTextInput {
+                        text_label: "Capture Y coordinate",
+                        button_label: "Update",
+                        on_value: move |capture_y: String| {
+                            if let Ok(y) = capture_y.parse::<i32>() {
+                                save_settings(SettingsData {
+                                    capture_y: y,
+                                    ..settings_view.peek().clone()
+                                });
+                            }
+                        },
+                        value: settings_view().capture_y.to_string(),
+                    }
+                }
+            }
             Button {
                 text: "Refresh handles",
                 kind: ButtonKind::Secondary,

@@ -1,6 +1,9 @@
 use log::debug;
 use opencv::core::Point;
+#[cfg(windows)]
 use platforms::windows::KeyKind;
+#[cfg(target_os = "macos")]
+use platforms::macos::KeyKind;
 
 use super::{
     Player, PlayerAction, PlayerActionAutoMob, PlayerActionKey, PlayerActionMove, PlayerState,

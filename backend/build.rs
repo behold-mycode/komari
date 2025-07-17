@@ -70,7 +70,10 @@ fn main() {
     let mob_model = dir.join("mob_nms.onnx");
     let rune_model = dir.join("rune_nms.onnx");
     let minimap_model = dir.join("minimap_nms.onnx");
+    #[cfg(windows)]
     let onnx_runtime = dir.join("onnxruntime/onnxruntime.dll");
+    #[cfg(target_os = "macos")]
+    let onnx_runtime = dir.join("onnxruntime-osx-arm64-1.16.3/lib/libonnxruntime.dylib");
     #[cfg(feature = "gpu")]
     let onnx_runtime_cuda = dir.join("onnxruntime/onnxruntime_providers_cuda.dll");
     #[cfg(feature = "gpu")]
