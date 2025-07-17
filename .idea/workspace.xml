@@ -21,48 +21,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="8ec6e924-c991-4332-aa16-e9561f962f5e" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.cargo/config.toml" beforeDir="false" afterPath="$PROJECT_DIR$/.cargo/config.toml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Cargo.lock" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.lock" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/MIGRATION_JOURNAL.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/PROJECT_JOURNAL.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/build.rs" beforeDir="false" afterPath="$PROJECT_DIR$/backend/build.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/src/bridge.rs" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/bridge.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/src/context.rs" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/context.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/src/database.rs" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/database.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/src/debug.rs" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/debug.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/src/detect.rs" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/detect.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/src/lib.rs" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/lib.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/src/mat.rs" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/mat.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/src/player/actions.rs" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/player/actions.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/src/player/adjust.rs" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/player/adjust.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/src/player/cash_shop.rs" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/player/cash_shop.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/src/player/double_jump.rs" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/player/double_jump.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/src/player/fall.rs" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/player/fall.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/src/player/familiars_swap.rs" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/player/familiars_swap.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/src/player/grapple.rs" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/player/grapple.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/src/player/idle.rs" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/player/idle.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/src/player/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/player/mod.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/src/player/moving.rs" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/player/moving.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/src/player/panic.rs" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/player/panic.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/src/player/solve_rune.rs" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/player/solve_rune.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/src/player/state.rs" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/player/state.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/src/player/unstuck.rs" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/player/unstuck.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/src/player/up_jump.rs" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/player/up_jump.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/src/player/use_key.rs" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/player/use_key.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/src/request_handler.rs" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/request_handler.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/src/rpc.rs" beforeDir="false" afterPath="$PROJECT_DIR$/backend/src/rpc.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/examples/python/arduino_example.py" beforeDir="false" afterPath="$PROJECT_DIR$/examples/python/arduino_example.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/platforms/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/platforms/Cargo.toml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/platforms/src/macos/error.rs" beforeDir="false" afterPath="$PROJECT_DIR$/platforms/src/macos/error.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/platforms/src/macos/handle.rs" beforeDir="false" afterPath="$PROJECT_DIR$/platforms/src/macos/handle.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/platforms/src/macos/keys.rs" beforeDir="false" afterPath="$PROJECT_DIR$/platforms/src/macos/keys.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/platforms/src/macos/screenshot.rs" beforeDir="false" afterPath="$PROJECT_DIR$/platforms/src/macos/screenshot.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/rust-toolchain.toml" beforeDir="false" afterPath="$PROJECT_DIR$/rust-toolchain.toml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/ui/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/ui/Cargo.toml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/ui/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/ui/src/main.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/ui/src/settings.rs" beforeDir="false" afterPath="$PROJECT_DIR$/ui/src/settings.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -174,7 +133,7 @@
       <workItem from="1752104614886" duration="562000" />
       <workItem from="1752538557233" duration="3559000" />
       <workItem from="1752695061773" duration="32000" />
-      <workItem from="1752710720623" duration="101000" />
+      <workItem from="1752710720623" duration="728000" />
     </task>
     <servers />
   </component>
