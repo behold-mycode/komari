@@ -7,7 +7,6 @@
 #![feature(assert_matches)]
 
 use std::sync::{LazyLock, Mutex};
-
 use strum::Display;
 use tokio::{
     sync::{
@@ -16,6 +15,7 @@ use tokio::{
     },
     task::spawn_blocking,
 };
+
 
 mod array;
 mod bridge;
@@ -38,7 +38,7 @@ mod skill;
 mod task;
 
 pub use {
-    context::init,
+    context::{init, signal_update_loop_shutdown},
     database::{
         Action, ActionCondition, ActionConfiguration, ActionConfigurationCondition, ActionKey,
         ActionKeyDirection, ActionKeyWith, ActionMove, Bound, CaptureMode, Character, Class,
@@ -451,3 +451,4 @@ async fn request(request: Request) -> Response {
         .unwrap();
     rx.await.unwrap()
 }
+

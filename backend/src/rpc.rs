@@ -7,7 +7,6 @@ pub use input::{Coordinate, MouseAction};
 use input::{Key, KeyDownRequest, KeyInitRequest, KeyRequest, KeyUpRequest, MouseRequest};
 #[cfg(windows)]
 use platforms::windows::KeyKind;
-
 #[cfg(target_os = "macos")]
 use platforms::macos::KeyKind;
 use tokio::runtime::Handle;

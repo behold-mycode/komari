@@ -12,11 +12,13 @@ use debug::Debug;
 use dioxus::{
     desktop::{
         WindowBuilder,
-        tao::platform::windows::WindowBuilderExtWindows,
         wry::dpi::{PhysicalSize, Size},
     },
     prelude::*,
 };
+
+#[cfg(windows)]
+use dioxus::desktop::tao::platform::windows::WindowBuilderExtWindows;
 use fern::Dispatch;
 use log::LevelFilter;
 use minimap::Minimap;
@@ -76,11 +78,23 @@ fn main() {
     log_panics::init();
 
     backend::init();
-    let window = WindowBuilder::new()
-        .with_drag_and_drop(false)
+    
+    // Simple shutdown handler for Ctrl-C - signals update loop to exit cleanly
+    ctrlc::set_handler(move || {
+        log::info!("Received shutdown signal, signaling update loop to exit");
+        backend::signal_update_loop_shutdown();
+        std::process::exit(0);
+    }).expect("Error setting Ctrl-C handler");
+    
+    let mut window = WindowBuilder::new()
         .with_inner_size(Size::new(PhysicalSize::new(1024, 483)))
         .with_min_inner_size(Size::new(PhysicalSize::new(320, 483)))
         .with_title(Alphanumeric.sample_string(&mut rand::rng(), 16));
+    
+    #[cfg(windows)]
+    {
+        window = window.with_drag_and_drop(false);
+    }
     let cfg = dioxus::desktop::Config::default()
         .with_menu(None)
         .with_window(window);

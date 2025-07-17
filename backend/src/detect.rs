@@ -42,7 +42,10 @@ use ort::{
     session::{Session, SessionInputValue, SessionOutputs},
     value::TensorRef,
 };
+#[cfg(windows)]
 use platforms::windows::KeyKind;
+#[cfg(target_os = "macos")]
+use platforms::macos::KeyKind;
 
 #[cfg(debug_assertions)]
 use crate::debug::{debug_mat, debug_spinning_arrows};

@@ -1,5 +1,8 @@
 use opencv::core::{Point, Rect};
+#[cfg(windows)]
 use platforms::windows::KeyKind;
+#[cfg(target_os = "macos")]
+use platforms::macos::KeyKind;
 use strum::Display;
 
 use super::{Player, PlayerState, use_key::UseKey};

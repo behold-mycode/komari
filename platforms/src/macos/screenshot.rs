@@ -25,11 +25,26 @@ impl ScreenshotCapture {
         let screen = screens.into_iter().nth(handle.display_index)
             .ok_or(Error::WindowNotFound)?;
         
-        // Validate capture coordinates are within screen bounds
-        let display_info = &screen.display_info;
-        if handle.x < 0 || handle.y < 0 || 
-           handle.x + handle.width > display_info.width as i32 ||
-           handle.y + handle.height > display_info.height as i32 {
+        // For multi-monitor setups, coordinates may extend beyond primary screen
+        // Get all screens to check if coordinates are within the extended desktop bounds
+        let all_screens = Screen::all().map_err(|_| Error::WindowNotFound)?;
+        let mut capture_valid = false;
+        
+        for screen in all_screens.iter() {
+            let display_info = &screen.display_info;
+            
+            // Check if the capture area fits within this screen
+            if handle.x >= 0 && handle.y >= 0 && 
+               handle.x + handle.width <= display_info.width as i32 &&
+               handle.y + handle.height <= display_info.height as i32 {
+                capture_valid = true;
+                break;
+            }
+        }
+        
+        if !capture_valid {
+            log::warn!("Capture coordinates ({}, {}) with size {}x{} do not fit within any available screen",
+                      handle.x, handle.y, handle.width, handle.height);
             return Err(Error::InvalidWindowSize);
         }
 
@@ -45,14 +60,26 @@ impl ScreenshotCapture {
     }
 
     pub fn set_capture_region(&mut self, x: i32, y: i32, width: i32, height: i32) -> Result<(), Error> {
-        // Validate new coordinates against screen bounds if screen is available
-        if let Some(screen) = &self.screen {
+        // Validate new coordinates against all available screens (multi-monitor support)
+        let all_screens = Screen::all().map_err(|_| Error::WindowNotFound)?;
+        let mut capture_valid = false;
+        
+        for screen in all_screens.iter() {
             let display_info = &screen.display_info;
-            if x < 0 || y < 0 || 
-               x + width > display_info.width as i32 ||
-               y + height > display_info.height as i32 {
-                return Err(Error::InvalidWindowSize);
+            
+            // Check if the capture area fits within this screen
+            if x >= 0 && y >= 0 && 
+               x + width <= display_info.width as i32 &&
+               y + height <= display_info.height as i32 {
+                capture_valid = true;
+                break;
             }
+        }
+        
+        if !capture_valid {
+            log::warn!("New capture coordinates ({}, {}) with size {}x{} do not fit within any available screen",
+                      x, y, width, height);
+            return Err(Error::InvalidWindowSize);
         }
         
         self.x = x;

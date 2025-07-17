@@ -12,7 +12,10 @@ use opencv::{
     imgcodecs::{IMREAD_COLOR, imdecode},
     imgproc::{COLOR_BGR2BGRA, cvt_color_def},
 };
+#[cfg(windows)]
 use platforms::windows::{Handle, KeyInputKind, KeyKind, KeyReceiver, query_capture_handles};
+#[cfg(target_os = "macos")]
+use platforms::macos::{Handle, KeyInputKind, KeyKind, KeyReceiver, query_capture_handles};
 #[cfg(debug_assertions)]
 use rand::distr::{Alphanumeric, SampleString};
 use strum::IntoEnumIterator;
@@ -321,7 +324,7 @@ impl RequestHandler for DefaultRequestHandler<'_> {
 
         if settings.capture_mode != self.settings.capture_mode {
             self.image_capture
-                .set_mode(handle_or_default, settings.capture_mode);
+                .set_mode(handle_or_default, settings.capture_mode, &settings);
         }
 
         if settings.input_method != self.settings.input_method
@@ -410,7 +413,7 @@ impl RequestHandler for DefaultRequestHandler<'_> {
 
         *self.selected_capture_handle = handle;
         self.image_capture
-            .set_mode(handle_or_default, self.settings.capture_mode);
+            .set_mode(handle_or_default, self.settings.capture_mode, &self.settings);
         *self.key_receiver = KeyReceiver::new(handle_or_default, KeyInputKind::Fixed);
         match self.settings.input_method {
             InputMethod::Default => {

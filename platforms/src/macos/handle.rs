@@ -91,39 +91,33 @@ impl Handle {
             }
         }
     }
+
+    pub fn client_to_screen(&self, x: i32, y: i32) -> (i32, i32) {
+        // Convert relative coordinates to absolute screen coordinates
+        (self.x + x, self.y + y)
+    }
+    
+    pub fn screen_to_client(&self, x: i32, y: i32) -> (i32, i32) {
+        // Convert absolute screen coordinates to relative coordinates  
+        (x - self.x, y - self.y)
+    }
+
 }
 
 pub fn query_capture_handles() -> Vec<(String, Handle)> {
-    use screenshots::Screen;
-    
     let mut handles = Vec::new();
     
-    // Enumerate all available displays
-    if let Ok(screens) = Screen::all() {
-        for (index, screen) in screens.iter().enumerate() {
-            let display_info = &screen.display_info;
-            let name = format!(
-                "Display {} ({}×{}) {}", 
-                index, 
-                display_info.width, 
-                display_info.height,
-                if display_info.is_primary { "[Primary]" } else { "" }
-            );
-            
-            let handle = Handle::new_fixed(index as u64)
-                .with_coordinates(index, 0, 0, 1366, 768);
-            
-            handles.push((name, handle));
-        }
-    }
+    // Provide capture options that match the UI expectations
+    // The UI will allow users to configure coordinates through the settings
+    handles.push((
+        "MapleStory".to_string(),
+        Handle::new("MapleStory")
+    ));
     
-    // If no displays found, provide fallback
-    if handles.is_empty() {
-        handles.push((
-            "Default Display (Manual Config Required)".to_string(), 
-            Handle::new_fixed(0)
-        ));
-    }
+    handles.push((
+        "Screen Capture Area".to_string(),
+        Handle::new_fixed(1)
+    ));
     
     handles
 }

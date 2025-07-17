@@ -1,4 +1,7 @@
+#[cfg(windows)]
 use platforms::windows::KeyKind;
+#[cfg(target_os = "macos")]
+use platforms::macos::KeyKind;
 
 use super::{
     Player, PlayerActionKey, PlayerActionPingPong, PlayerState,
@@ -225,7 +228,10 @@ mod tests {
     use std::assert_matches::assert_matches;
 
     use opencv::core::Point;
-    use platforms::windows::KeyKind;
+    #[cfg(windows)]
+use platforms::windows::KeyKind;
+#[cfg(target_os = "macos")]
+use platforms::macos::KeyKind;
 
     use super::{Moving, PlayerState, UpJumping, update_up_jumping_context};
     use crate::{

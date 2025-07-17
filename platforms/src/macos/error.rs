@@ -15,6 +15,10 @@ pub enum Error {
     KeyNotFound,
     #[error("macOS API error {0}: {1}")]
     MacOS(u32, String),
+    #[error("initialization failed")]
+    InitializationFailed,
+    #[error("input failed")]
+    InputFailed,
 }
 
 impl Error {

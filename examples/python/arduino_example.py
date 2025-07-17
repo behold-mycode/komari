@@ -229,7 +229,7 @@ if __name__ == "__main__":
     }
 
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=1))
-    add_KeyInputServicer_to_server(KeyInput(keys_map, serial), server)
+    add_KeyInputServicer_to_server(KeyInput(keys_map, serial_conn), server)
     server.add_insecure_port("[::]:5001")
     server.start()
     print("Server started, listening on 5001")

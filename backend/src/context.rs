@@ -14,7 +14,10 @@ use opencv::{
     core::{Vector, VectorToVec},
     imgcodecs::imencode_def,
 };
+#[cfg(windows)]
 use platforms::windows::{self, Handle, KeyInputKind, KeyReceiver};
+#[cfg(target_os = "macos")]
+use platforms::macos::{self, Handle, KeyInputKind, KeyReceiver};
 use strum::IntoEnumIterator;
 use tokio::sync::broadcast;
 
@@ -39,6 +42,19 @@ use crate::{Settings, bridge::MockKeySender, detect::MockDetector};
 const FPS: u32 = 30;
 pub const MS_PER_TICK: u64 = MS_PER_TICK_F32 as u64;
 pub const MS_PER_TICK_F32: f32 = 1000.0 / FPS as f32;
+
+// Simple shutdown flag for update loop - using AtomicBool instead of LazyLock to avoid race conditions
+static UPDATE_LOOP_SHUTDOWN: AtomicBool = AtomicBool::new(false);
+
+/// Signal the update loop to shutdown gracefully
+pub fn signal_update_loop_shutdown() {
+    UPDATE_LOOP_SHUTDOWN.store(true, Ordering::Relaxed);
+}
+
+/// Check if the update loop should shutdown
+fn should_update_loop_shutdown() -> bool {
+    UPDATE_LOOP_SHUTDOWN.load(Ordering::Relaxed)
+}
 
 /// A control flow to use after a contextual state update.
 #[derive(Debug)]
@@ -141,10 +157,18 @@ pub fn init() {
             .unwrap()
             .parent()
             .unwrap()
-            .join("onnxruntime.dll");
+            .join({
+                #[cfg(windows)]
+                { "onnxruntime.dll" }
+                #[cfg(target_os = "macos")]
+                { "libonnxruntime.dylib" }
+            });
 
         ort::init_from(dll.to_str().unwrap()).commit().unwrap();
+        #[cfg(windows)]
         windows::init();
+        #[cfg(target_os = "macos")]
+        macos::init();
         thread::spawn(|| {
             let tokio_rt = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
@@ -189,7 +213,7 @@ fn update_loop() {
 
     let mut capture_handles = Vec::<(String, Handle)>::new();
     let mut selected_capture_handle = None;
-    let mut image_capture = ImageCapture::new(handle, settings.capture_mode);
+    let mut image_capture = ImageCapture::new(handle, settings.capture_mode, &settings);
     if let ImageCaptureKind::BitBltArea(capture) = image_capture.kind() {
         key_receiver = KeyReceiver::new(capture.handle(), KeyInputKind::Foreground);
         keys.set_method(KeySenderMethod::Default(
@@ -364,6 +388,12 @@ fn loop_with_fps(fps: u32, mut on_tick: impl FnMut()) {
     let mut last_logged_instant = Instant::now();
 
     loop {
+        // Check for shutdown signal to prevent accessing shared state during process shutdown
+        if should_update_loop_shutdown() {
+            log::info!("Update loop shutdown requested, exiting gracefully");
+            break;
+        }
+        
         let start = Instant::now();
 
         on_tick();
@@ -391,3 +421,4 @@ fn to_png(frame: Option<&OwnedMat>) -> Option<Vec<u8>> {
         Some(bytes.to_vec())
     })
 }
+

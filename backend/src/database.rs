@@ -6,7 +6,10 @@ use std::{
 
 use anyhow::Result;
 use opencv::core::Rect;
+#[cfg(windows)]
 use platforms::windows::KeyKind;
+#[cfg(target_os = "macos")]
+use platforms::macos::KeyKind;
 use rusqlite::{Connection, Params, Statement, types::Null};
 use serde::{Deserialize, Deserializer, Serialize, de::DeserializeOwned};
 use serde_json::Value;
@@ -160,6 +163,10 @@ pub struct Settings {
     #[serde(skip_serializing, default)]
     pub id: Option<i64>,
     pub capture_mode: CaptureMode,
+    #[serde(default = "capture_x_default")]
+    pub capture_x: i32,
+    #[serde(default = "capture_y_default")]
+    pub capture_y: i32,
     #[serde(default = "enable_rune_solving_default")]
     pub enable_rune_solving: bool,
     pub enable_panic_mode: bool,
@@ -183,6 +190,8 @@ impl Default for Settings {
         Self {
             id: None,
             capture_mode: CaptureMode::default(),
+            capture_x: capture_x_default(),
+            capture_y: capture_y_default(),
             enable_rune_solving: enable_rune_solving_default(),
             enable_panic_mode: false,
             input_method: InputMethod::default(),
@@ -199,6 +208,14 @@ impl Default for Settings {
 }
 
 impl_identifiable!(Settings);
+
+fn capture_x_default() -> i32 {
+    0
+}
+
+fn capture_y_default() -> i32 {
+    0
+}
 
 fn enable_rune_solving_default() -> bool {
     true

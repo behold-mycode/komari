@@ -2,7 +2,10 @@ use std::fmt::Display;
 
 use log::debug;
 use opencv::core::{Point, Rect};
+#[cfg(windows)]
 use platforms::windows::KeyKind;
+#[cfg(target_os = "macos")]
+use platforms::macos::KeyKind;
 
 use super::{
     Player, PlayerState,
