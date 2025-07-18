@@ -88,61 +88,18 @@ class KeyInput(KeyInputServicer):
         return KeyDownResponse()
 
 
-def find_arduino_ports():
-    """Find Arduino devices with preference for HID devices and cu devices"""
-    import glob
-    
-    # Check both cu and tty variants, prefer cu for macOS
-    cu_hid_ports = glob.glob('/dev/cu.usbmodem*HID*')      # User's exact pattern
-    tty_hid_ports = glob.glob('/dev/tty.usbmodem*HID*')    # Original pattern  
-    cu_other_ports = glob.glob('/dev/cu.usbmodem*') + glob.glob('/dev/cu.usbserial*')
-    tty_other_ports = glob.glob('/dev/tty.usbmodem*') + glob.glob('/dev/tty.usbserial*')
-    
-    # Remove HID ports from other ports to avoid duplicates
-    cu_other_ports = [p for p in cu_other_ports if 'HID' not in p]
-    tty_other_ports = [p for p in tty_other_ports if 'HID' not in p]
-    
-    # Priority order: cu HID > tty HID > cu other > tty other
-    all_ports = cu_hid_ports + tty_hid_ports + cu_other_ports + tty_other_ports
-    return all_ports
-
 if __name__ == "__main__":
-    # Try to find macOS/Windows Arduino device, fallback to test mode
-    arduino_port = None
+    print("Starting Arduino RPC server...")
+    
+    # Connect to Arduino - fail fast if not available
     try:
-        import platform
-        if platform.system() == "Windows":
-            # Windows COM port (original behavior)
-            arduino_port = "COM6"
-            print(f"Windows detected, using: {arduino_port}")
-            serial_conn = serial.Serial(arduino_port)
-        else:
-            # macOS/Linux port detection
-            all_ports = find_arduino_ports()
-            
-            if all_ports:
-                arduino_port = all_ports[0]
-                print(f"Found Arduino at: {arduino_port}")
-                
-                # Detailed device type reporting
-                if 'cu.usbmodem' in arduino_port and 'HID' in arduino_port:
-                    print("✅ Using preferred cu HID device (optimal for macOS)")
-                elif 'tty.usbmodem' in arduino_port and 'HID' in arduino_port:
-                    print("✅ Using tty HID device")
-                elif 'cu.usbmodem' in arduino_port:
-                    print("⚠️  Using cu device (may work but HID preferred)")
-                else:
-                    print("⚠️  Using non-preferred device - key input may not work optimally")
-                    
-                print(f"Available Arduino ports found: {all_ports}")
-                serial_conn = serial.Serial(arduino_port)
-            else:
-                print("No Arduino found - running in test mode (gRPC server only)")
-                print("Searched patterns: /dev/cu.usbmodem*HID*, /dev/tty.usbmodem*HID*, /dev/cu.usbmodem*, /dev/tty.usbmodem*")
-                serial_conn = None
+        serial_conn = serial.Serial("/dev/cu.usbmodemHIDFG1", 9600, timeout=2)
+        print("✅ Connected to Arduino at /dev/cu.usbmodemHIDFG1")
     except Exception as e:
-        print(f"Arduino connection failed: {e} - running in test mode")
-        serial_conn = None
+        print(f"❌ Failed to connect to Arduino: {e}")
+        print("Make sure Arduino is connected and sketch is uploaded")
+        exit(1)
+    
     # Generated with ChatGPT, might not be accurate
     keys_map = {
         # Letters

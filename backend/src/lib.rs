@@ -146,6 +146,7 @@ pub(crate) trait RequestHandler {
 
     fn on_redetect_minimap(&mut self);
 
+
     fn on_game_state_receiver(&self) -> broadcast::Receiver<GameState>;
 
     fn on_key_receiver(&self) -> broadcast::Receiver<KeyBinding>;
@@ -255,6 +256,7 @@ pub async fn update_minimap(preset: Option<String>, minimap: Option<Minimap>) {
         Response::UpdateMinimap
     )
 }
+
 
 /// Deletes `minimap` from the database.
 pub async fn delete_minimap(minimap: Minimap) {

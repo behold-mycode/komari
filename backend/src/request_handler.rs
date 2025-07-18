@@ -36,7 +36,7 @@ use crate::{
     bridge::{ImageCapture, ImageCaptureKind, KeySenderMethod},
     buff::{BuffKind, BuffState},
     context::Context,
-    database::InputMethod,
+    database::{InputMethod, Platform as PlatformData},
     minimap::{Minimap, MinimapState},
     player::{PlayerState, Quadrant},
     poll_request,
@@ -466,6 +466,7 @@ impl RequestHandler for DefaultRequestHandler<'_> {
         };
     }
 
+
     #[cfg(debug_assertions)]
     fn on_test_spin_rune(&self) {
         static SPIN_TEST_DIR: Dir<'static> = include_dir!("$SPIN_TEST_DIR");
@@ -514,11 +515,14 @@ fn poll_key(handler: &mut DefaultRequestHandler) {
         return;
     };
     debug!(target: "handler", "received key {received_key:?}");
+    
+    // Handle toggle actions key
     if let KeyBindingConfiguration { key, enabled: true } = handler.settings.toggle_actions_key
         && KeyKind::from(key) == received_key
     {
         handler.on_rotate_actions(!handler.context.halting);
     }
+    
     let _ = handler.key_sender.send(received_key.into());
 }
 
